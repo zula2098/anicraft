@@ -136,7 +136,6 @@ anicraft-cli = { path = "crates/cli" }
 craft-update = { git = "https://github.com/storytold/craft-libs", rev = "6ac2a6a34ae83fc0f0bfb25a569ba6388b72266a" }
 
 eframe = { workspace = true, features = ["links"] }
-rfd.workspace = true
 # Pictures copied in other apps, for Paste (#263). The clipboard library eframe already uses
 # for text (MIT OR Apache-2.0), with the same features, so no crate is added to the build.
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
@@ -148,6 +147,9 @@ cpal = { version = "0.18", optional = true }
 # open-documents and quit handlers with AppKit and hands us plain paths, so our code stays free of
 # `unsafe`. Pinned exactly: it is young, and a new version is read again before it comes in. Its
 # objc2 / objc2-app-kit / objc2-foundation are the versions wgpu already brings on macOS.
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))' .dependencies]
+rfd.workspace = true
+
 [target.'cfg(target_os = "macos")'.dependencies]
 fmv-macos-events = "=0.1.0"
 # Waits for the answer of a file dialog shown as a sheet (`platform::start_file_dialog`).
