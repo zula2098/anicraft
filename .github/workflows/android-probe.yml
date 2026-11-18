@@ -4,7 +4,7 @@ on:
   push:
     branches: [android-port]
     paths:
-      - "android/probe/**"
+      - "android/**"
       - ".github/workflows/android-probe.yml"
   pull_request:
     paths:
