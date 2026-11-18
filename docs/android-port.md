@@ -119,11 +119,13 @@ GameActivity host, manifest, ARM64 native-library staging task, and instructions
 physical-device validation are still required.
 
 The GitHub Actions workflow `.github/workflows/android-probe.yml` installs the
-Android SDK tools and a pinned NDK, then cross-compiles the probe. It also triggers
-for changes anywhere under `android/`. The first workflow attempt failed during
-SDK/NDK installation before Rust compilation. The workflow was adjusted to avoid
-the retired legacy SDK `tools` package and install NDK r27d explicitly; the next
-run must confirm whether this resolves the environment failure.
+Android SDK tools and a pinned NDK, cross-compiles the probe, and has a second job
+to package a debug APK with Gradle. It also triggers for changes anywhere under
+`android/`. The first workflow attempts failed during SDK/NDK installation before
+Rust compilation. After excluding the retired legacy SDK `tools` package and
+installing NDK r27d explicitly, the next run passed SDK, NDK and `cargo-ndk`
+installation and reached the Rust compile step. The APK job has been added to the
+latest workflow revision and still needs its first result.
 
 The Gradle host currently packages only the probe. It does not yet link the real
 AniCraft app modules or implement Android document picking, persistence, lifecycle
