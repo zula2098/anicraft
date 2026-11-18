@@ -147,7 +147,7 @@ cpal = { version = "0.18", optional = true }
 # open-documents and quit handlers with AppKit and hands us plain paths, so our code stays free of
 # `unsafe`. Pinned exactly: it is young, and a new version is read again before it comes in. Its
 # objc2 / objc2-app-kit / objc2-foundation are the versions wgpu already brings on macOS.
-[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))' .dependencies]
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
 rfd.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
