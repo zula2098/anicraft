@@ -1,8 +1,8 @@
 # Android port
 
-This document tracks the Android port separately from the desktop and web builds. The
-Android build is not yet supported; this is the implementation plan and the results of
-the initial portability audit.
+This document tracks the experimental Android port separately from the desktop and web builds.
+The native ARM64 editor library now cross-compiles in CI; APK packaging and on-device behavior
+remain under validation.
 
 ## Baseline audit
 
@@ -12,15 +12,15 @@ the port a reusable document, animation, rendering and command layer.
 
 The current desktop executable is not an Android executable yet:
 
-- `src/main.rs` selects the desktop startup path for every target except wasm32. Android
-  needs its own `android_main` entry point and must provide the Android activity to
-  winit's event loop before the native eframe runner starts.
-- The shared eframe dependency does not enable either Android activity backend.
-  The eframe 0.36 feature names are `android-game-activity` and
-  `android-native-activity`. The initial implementation will target GameActivity.
-- The current non-wasm dependency group includes desktop-only pieces such as native
-  file dialogs, clipboard integration, desktop update/CLI services and OS-specific
-  helpers. These need to be split by target rather than pulled into Android.
+- `src/main.rs` now has a dedicated `android_main(AndroidApp)` entry point. It creates the
+  shared `app::App` and starts eframe with `NativeOptions.android_app`; the desktop CLI and
+  recovery loop remain on the non-WASM desktop `main` path.
+- The `android` Cargo feature enables eframe's `android-game-activity` backend. The
+  Android Gradle host uses AndroidX GameActivity 4.4.2.
+- Some desktop-oriented dependencies remain in the non-WASM target group and currently
+  compile for ARM64. Their runtime behavior is not assumed to be valid on Android; file
+  dialogs, clipboard, update/CLI services and OS helper calls still need platform-specific
+  behavior or explicit exclusion.
 - The platform layer currently treats every non-wasm target as a desktop OS in several
   places. Android needs explicit platform behavior for storage, file access, dialogs,
   clipboard, lifecycle and system appearance.
@@ -32,16 +32,19 @@ The current desktop executable is not an Android executable yet:
 
 ## Porting sequence
 
-### A0 — Build and platform boundary
+### A0 — Native build and packaging
 
-- Keep the desktop and web configurations unchanged.
-- Add an Android-specific application entry point using eframe's GameActivity backend.
-- Move desktop-only dependencies and startup code behind desktop target conditions.
-- Add Android packaging metadata and a reproducible ARM64 build command.
-- Add Android CI compile checks once the entry point and packaging scaffold are in place.
+- [x] Add an Android-specific application entry point using eframe's GameActivity backend.
+- [x] Add Android Gradle packaging metadata and a reproducible ARM64 build command.
+- [x] Add CI cross-compilation of the real root AniCraft crate for ARM64.
+- [ ] Complete debug APK packaging and artifact upload.
+- [ ] Verify desktop and web checks remain unchanged.
 
-**Exit criteria:** the ARM64 Android native library builds from a clean checkout; desktop
-and web checks continue to pass.
+**Progress:** the real root crate (not just the isolated probe) has completed an ARM64
+release cross-compile in GitHub Actions and uploaded `libmain.so`. APK packaging then
+reached Java compilation and exposed a missing AppCompat dependency. The explicit
+`androidx.appcompat:appcompat:1.7.1` dependency has now been added; the latest CI run
+is testing the corrected APK build.
 
 ### A1 — First interactive Android build
 
@@ -95,37 +98,31 @@ A successful cross-compile alone does not establish runtime, stylus or tablet su
 
 ## Work started on `android-port`
 
-### Android backend probe and Gradle host (ARM64 probe verified; APK fix queued)
+### Android GameActivity host and native editor
 
-An isolated crate now lives in `android/probe/`. It is intentionally outside the
-root workspace so it cannot enable Android-only features in the desktop/web
-dependency graph. It is pinned to the versions already resolved by the main
-repository lockfile:
+The initial isolated backend probe remains under `android/probe/` as a small eframe/winit
+compatibility reference. The actual Android app no longer packages that probe: the Gradle
+`preBuild` task invokes `cargo-ndk` on the root `Cargo.toml` with
+`--lib --no-default-features --features android`, then stages the resulting root
+`libmain.so` into the APK.
 
-- eframe 0.36.2 with `android-game-activity`, `accesskit`, `default_fonts`
-  and `wgpu`.
-- winit 0.30.13 with the matching `android-game-activity` backend.
-- A `cdylib` named `main`, with an `android_main(AndroidApp)` entry point
-  passing the activity to `eframe::NativeOptions::android_app`.
+The root crate now declares a `cdylib` named `main` and has an Android-specific
+`android_main(AndroidApp)` entry point. That entry point starts the existing `app::App`
+with a sample AniCraft document. The Android Java activity extends AndroidX GameActivity
+4.4.2. Gradle uses SDK 36, NDK r27d (`27.3.13750724`), and Java 17.
 
-Build instructions are in `android/probe/README.md`. The expected ARM64
-artifact is `android/probe/target/aarch64-linux-android/release/libmain.so`.
+**Verified in CI:** the root AniCraft crate compiled in release mode for
+`aarch64-linux-android` and the native library artifact uploaded successfully in
+workflow run 7. The APK job then reached Java compilation but failed because
+`androidx.appcompat.app.AppCompatActivity` was absent from the compile classpath.
+The Android Gradle dependencies now explicitly include both AndroidX Core 1.16.0
+and AppCompat 1.7.1. Workflow run 11 is validating the updated dependency set.
+No APK from the corrected build has yet been confirmed, and no physical-device
+runtime test has happened.
 
-**Current status:** the isolated Rust probe remains a backend test, not the editor.
-A first Android Gradle application scaffold now lives in `android/`: an AndroidX
-GameActivity host, manifest, ARM64 native-library staging task, and instructions in
-`android/README.md`. Gradle invokes `cargo-ndk` to build the probe and packages
-`libmain.so` into a debug APK. The Rust ARM64 probe has now compiled successfully in GitHub Actions and its `libmain.so` artifact was uploaded. The first APK packaging attempt exposed a missing explicit AndroidX Core dependency required by GameActivity's Java API; `androidx.core:core:1.16.0` has now been added. The corrected APK build is awaiting CI. No runtime or physical-device validation has happened.
-
-The GitHub Actions workflow `.github/workflows/android-probe.yml` installs the
-Android SDK tools and a pinned NDK, cross-compiles the probe, and has a second job
-to package a debug APK with Gradle. It also triggers for changes anywhere under
-`android/`. The initial workflow attempts failed during SDK/NDK installation. After excluding the retired SDK `tools` package and installing NDK r27d explicitly, run 6 completed the ARM64 Rust build successfully (`Finished release profile`) and uploaded the native probe artifact. Its Gradle job then failed at Java compilation because `androidx.core.view.OnApplyWindowInsetsListener` was not on the compile classpath. The missing explicit AndroidX Core dependency was added in commit `8044045`; the next CI run will verify the fix and APK packaging.
-
-The Gradle host currently packages only the probe. It does not yet link the real
-AniCraft app modules or implement Android document picking, persistence, lifecycle
-recovery, touch/stylus handling or export destinations.
-
+The APK build workflow is `.github/workflows/android-probe.yml`; despite its
+historical filename, it now builds the root editor library and packages the
+debug Android app. The isolated probe is not the app payload.
 
 ### Full editor integration: platform boundary audit
 
