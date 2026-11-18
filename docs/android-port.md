@@ -40,11 +40,10 @@ The current desktop executable is not an Android executable yet:
 - [ ] Complete debug APK packaging and artifact upload.
 - [ ] Verify desktop and web checks remain unchanged.
 
-**Progress:** the real root crate (not just the isolated probe) has completed an ARM64
-release cross-compile in GitHub Actions and uploaded `libmain.so`. APK packaging then
-reached Java compilation and exposed a missing AppCompat dependency. The explicit
-`androidx.appcompat:appcompat:1.7.1` dependency has now been added; the latest CI run
-is testing the corrected APK build.
+**Progress:** the isolated backend probe has completed an ARM64 release cross-compile.
+The workflow and Gradle task have since been switched to compile the real root crate;
+the first integrated CI run is in progress. APK packaging previously exposed a missing
+AppCompat dependency, now explicitly added as `androidx.appcompat:appcompat:1.7.1`.
 
 ### A1 — First interactive Android build
 
@@ -111,14 +110,14 @@ The root crate now declares a `cdylib` named `main` and has an Android-specific
 with a sample AniCraft document. The Android Java activity extends AndroidX GameActivity
 4.4.2. Gradle uses SDK 36, NDK r27d (`27.3.13750724`), and Java 17.
 
-**Verified in CI:** the root AniCraft crate compiled in release mode for
-`aarch64-linux-android` and the native library artifact uploaded successfully in
-workflow run 7. The APK job then reached Java compilation but failed because
-`androidx.appcompat.app.AppCompatActivity` was absent from the compile classpath.
-The Android Gradle dependencies now explicitly include both AndroidX Core 1.16.0
-and AppCompat 1.7.1. Workflow run 11 is validating the updated dependency set.
-No APK from the corrected build has yet been confirmed, and no physical-device
-runtime test has happened.
+**Verified in CI:** the isolated eframe/winit probe compiled for
+`aarch64-linux-android` and uploaded successfully in workflow run 7. That run did
+not yet compile the root editor crate. The root crate's Android build is now wired
+into both the ARM64 workflow job and Gradle's native-library task; workflow run 11
+is the first run testing this integrated path. The earlier APK attempt failed
+because `androidx.appcompat.app.AppCompatActivity` was absent from the compile
+classpath. AndroidX Core 1.16.0 and AppCompat 1.7.1 are now explicit dependencies.
+Neither the integrated APK nor on-device runtime has been confirmed yet.
 
 The APK build workflow is `.github/workflows/android-probe.yml`; despite its
 historical filename, it now builds the root editor library and packages the
