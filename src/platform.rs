@@ -973,7 +973,7 @@ pub fn reads_file(cmd: &str) -> bool {
 
 /// Shows the platform's own dialog (Windows common dialog, macOS panel, Linux XDG portal), with
 /// `title` already in the interface language. `None` when cancelled.
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos"), not(target_os = "android")))]
 pub fn file_dialog(cmd: &str, title: &str, default_name: &str) -> Option<PathBuf> {
     let (label, exts) = filters(cmd);
     let (label, d) = (crate::i18n::t(label), rfd::FileDialog::new().set_title(title));
@@ -988,11 +988,55 @@ pub fn file_dialog(cmd: &str, title: &str, default_name: &str) -> Option<PathBuf
 #[cfg(not(target_arch = "wasm32"))]
 pub type FileAnswer = std::sync::mpsc::Receiver<Option<PathBuf>>;
 
+/// Android file picking is not wired up yet. Keep the editor buildable while the
+/// Storage Access Framework bridge is implemented; callers can detect the unavailable
+/// dialog through the `None` result.
+#[cfg(target_os = "android")]
+pub fn file_dialog(_cmd: &str, _title: &str, _default_name: &str) -> Option<PathBuf> {
+    None
+}
+
+#[cfg(target_os = "android")]
+pub fn start_file_dialog(
+    _cmd: &str,
+    _title: &str,
+    _default_name: &str,
+    _window: &eframe::Frame,
+    _ui: eframe::egui::Context,
+) -> Option<FileAnswer> {
+    None
+}
+
+#[cfg(target_os = "android")]
+pub fn save_dialog(
+    _title: &str,
+    _label: &str,
+    _ext: &str,
+    _dir: Option<&std::path::Path>,
+    _default_name: &str,
+) -> Option<PathBuf> {
+    None
+}
+
+#[cfg(target_os = "android")]
+pub fn start_save_dialog(
+    _title: &str,
+    _label: &str,
+    _ext: &str,
+    _dir: Option<&std::path::Path>,
+    _default_name: &str,
+    _window: &eframe::Frame,
+    _ui: eframe::egui::Context,
+) -> Option<FileAnswer> {
+    None
+}
+
+
 /// Shows the file dialog for `cmd` on `window`; the answer arrives on the receiver and wakes `ui`. `None`
 /// when the dialog could not be shown. Elsewhere the dialog blocks and has answered on return.
 /// macOS shows it as a sheet instead: run in line, the panel's modal loop sits inside winit's
 /// event handler, and the end of a resize of the panel re-enters it and aborts the app.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn start_file_dialog(cmd: &str, title: &str, default_name: &str, window: &eframe::Frame, ui: eframe::egui::Context) -> Option<FileAnswer> {
     let (tx, rx) = std::sync::mpsc::channel();
     #[cfg(not(target_os = "macos"))]
@@ -1030,7 +1074,7 @@ pub fn start_file_dialog(cmd: &str, title: &str, default_name: &str, window: &ef
 
 /// The platform's save dialog for a file type that isn't a command's (an exporter plug-in's,
 /// ADR 0088): `label` names it in the filter, `ext` without the dot. `None` when cancelled.
-#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos")))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "macos"), not(target_os = "android")))]
 pub fn save_dialog(title: &str, label: &str, ext: &str, dir: Option<&std::path::Path>, default_name: &str) -> Option<PathBuf> {
     let mut d = rfd::FileDialog::new().set_title(title).add_filter(label, &[ext]).set_file_name(default_name);
     if let Some(dir) = dir.filter(|d| d.is_dir()) {
@@ -1040,7 +1084,7 @@ pub fn save_dialog(title: &str, label: &str, ext: &str, dir: Option<&std::path::
 }
 
 /// `save_dialog` shown as [`start_file_dialog`] shows a command's: a sheet on `window` on macOS.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn start_save_dialog(
     title: &str,
     label: &str,
