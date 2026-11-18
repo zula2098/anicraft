@@ -303,6 +303,28 @@ const HELP: &str = "anicraft [file.anicraft|file.fla|file.xfl] [--version] [--sc
                   (also ANICRAFT_CONTROL_PORT; 9878 by convention; see docs/control-protocol.md)\n\
      Headless use: anicraft-cli --help";
 
+/// Native Android entry point hosted by AndroidX GameActivity.
+///
+/// Unlike the desktop command-line path, Android starts with the sample document and
+/// delegates file access to the platform document picker in a later integration step.
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    let options = eframe::NativeOptions {
+        android_app: Some(app),
+        ..Default::default()
+    };
+    let session = Session::new(anicraft_engine::doc::sample::demo());
+    let _ = eframe::run_native(
+        "AniCraft",
+        options,
+        Box::new(move |cc| {
+            startup::log_adapter(cc.wgpu_render_state.as_ref());
+            Ok(Box::new(app::App::new(cc, session, None)))
+        }),
+    );
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     if let Some(result) = updates::finish_helper() {
