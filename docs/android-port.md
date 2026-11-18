@@ -91,3 +91,27 @@ The minimum validation set is:
 - Optional mouse/keyboard and external display.
 
 A successful cross-compile alone does not establish runtime, stylus or tablet support.
+
+
+## Work started on `android-port`
+
+### Android backend probe (scaffolded; build not yet run)
+
+An isolated crate now lives in `android/probe/`. It is intentionally outside the
+root workspace so it cannot enable Android-only features in the desktop/web
+dependency graph. It is pinned to the versions already resolved by the main
+repository lockfile:
+
+- eframe 0.36.2 with `android-game-activity`, `accesskit`, `default_fonts`
+  and `wgpu`.
+- winit 0.30.13 with the matching `android-game-activity` backend.
+- A `cdylib` named `main`, with an `android_main(AndroidApp)` entry point
+  passing the activity to `eframe::NativeOptions::android_app`.
+
+Build instructions are in `android/probe/README.md`. The expected ARM64
+artifact is `target/aarch64-linux-android/release/libmain.so`.
+
+**Current status:** source scaffold committed; no Android cross-build has been
+run in this environment yet. APK packaging, GameActivity host integration and
+on-device validation remain open. The probe must pass its ARM64 build before
+its configuration is used as the basis for the full editor target.
