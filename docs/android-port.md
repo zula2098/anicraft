@@ -109,7 +109,7 @@ repository lockfile:
   passing the activity to `eframe::NativeOptions::android_app`.
 
 Build instructions are in `android/probe/README.md`. The expected ARM64
-artifact is `target/aarch64-linux-android/release/libmain.so`.
+artifact is `android/probe/target/aarch64-linux-android/release/libmain.so`.
 
 **Current status:** source scaffold committed; no Android cross-build has been
 run in this environment yet. APK packaging, GameActivity host integration and
