@@ -124,31 +124,28 @@ The APK build workflow is `.github/workflows/android-probe.yml`; despite its
 historical filename, it now builds the root editor library and packages the
 debug Android app. The isolated probe is not the app payload.
 
-### Full editor integration: platform boundary audit
+### Android runtime platform work still required
 
-A fresh source pass confirms that the Android target cannot simply reuse the
-desktop native entry point. `src/main.rs` currently treats every non-WASM target
-as a desktop process: it parses CLI arguments, runs update-helper logic, starts
-the desktop recovery loop, and uses desktop startup/backend selection. Android
-needs a separate `android_main(AndroidApp)` path that creates the same
-`app::App` around an Android-aware `NativeOptions`.
+The full editor modules now compile into the ARM64 native library, but compile-time
+success does not mean every desktop platform service works at runtime on Android.
+The next boundary work is in `src/platform.rs` and the app's file workflows.
 
-The platform layer is the main integration boundary. `src/platform.rs` currently
-uses `rfd::FileDialog` for native open/save dialogs and `arboard` for system
-clipboard access; folder reveal launches Explorer/Finder/xdg-open. These must be
-replaced or isolated for Android. Document access should use Android's Storage
-Access Framework (persistable URI permissions and content resolver streams),
-not pretend that picker results are ordinary durable filesystem paths.
-The desktop updater, remote-control listener and desktop-only helper processes
-also need to be excluded from Android while preserving the shared editor,
-engine, rendering, autosave and export logic where their APIs permit.
+The platform layer currently uses `rfd::FileDialog` for native open/save dialogs
+and `arboard` for system clipboard access; folder reveal launches
+Explorer/Finder/xdg-open. Android needs document selection and saving through the
+Storage Access Framework, including persistable URI permissions and content-resolver
+streams. Picker results must not be treated as ordinary durable filesystem paths.
+The desktop updater, remote-control listener and helper-process actions also need
+to be disabled or replaced on Android where appropriate.
 
-The first safe integration sequence is therefore:
-1. keep desktop startup and its dependencies unchanged;
-2. add an Android-specific native entry point and target-specific dependency set;
-3. introduce Android document handles/stream I/O behind the platform boundary;
-4. adapt app open/save/export call sites to that abstraction;
-5. then enable the editor modules on Android and validate touch, stylus and lifecycle.
+The implementation sequence from here is:
+1. add Android platform capability checks and prevent desktop-only process launches;
+2. implement open/save/export using Android document URIs and stream I/O;
+3. validate autosave location and recovery across pause, resume and process death;
+4. check clipboard, fonts, audio and appearance calls on real Android devices;
+5. refine touch, multi-touch, stylus pressure/eraser and adaptive phone/tablet layout.
 
-Do not enable the whole root binary for Android until these seams compile cleanly;
-the separate probe remains the guard for eframe/winit/GameActivity compatibility.
+Until these are implemented and tested, the native build is an integration milestone,
+not a claim of complete Android support. The current Android entry point starts the
+real editor with the sample document; user document workflows and device behavior
+remain unverified.
