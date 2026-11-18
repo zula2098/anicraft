@@ -5,10 +5,18 @@ on:
     branches: [android-port]
     paths:
       - "android/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - "crates/**"
       - ".github/workflows/android-probe.yml"
   pull_request:
     paths:
-      - "android/probe/**"
+      - "android/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - "crates/**"
       - ".github/workflows/android-probe.yml"
   workflow_dispatch:
 
@@ -42,13 +50,13 @@ jobs:
         run: cargo install cargo-ndk --locked
 
       - name: Build GameActivity backend for ARM64
-        run: cargo ndk -t arm64-v8a build --release --manifest-path android/probe/Cargo.toml
+        run: cargo ndk -t arm64-v8a build --release --manifest-path Cargo.toml --lib --no-default-features --features android
 
       - name: Upload native library
         uses: actions/upload-artifact@v4
         with:
-          name: anicraft-android-probe-arm64
-          path: android/probe/target/aarch64-linux-android/release/libmain.so
+          name: anicraft-android-arm64
+          path: target/aarch64-linux-android/release/libmain.so
           if-no-files-found: error
           retention-days: 7
 
@@ -93,7 +101,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: anicraft-android-probe-debug-apk
+          name: anicraft-android-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
