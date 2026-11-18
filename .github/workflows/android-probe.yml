@@ -28,12 +28,15 @@ jobs:
         with:
           targets: aarch64-linux-android
 
-      - name: Install Android SDK and NDK
+      - name: Install Android SDK tools
         uses: android-actions/setup-android@v3
         with:
-          packages: |-
-            platform-tools
-            ndk;27.2.12479018
+          # Explicitly avoid the retired "tools" SDK package pulled in by older
+          # setup-android action defaults.
+          packages: platform-tools
+
+      - name: Install Android NDK
+        run: sdkmanager --install "ndk;27.3.13750724"
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
