@@ -130,3 +130,33 @@ latest workflow revision and still needs its first result.
 The Gradle host currently packages only the probe. It does not yet link the real
 AniCraft app modules or implement Android document picking, persistence, lifecycle
 recovery, touch/stylus handling or export destinations.
+
+
+### Full editor integration: platform boundary audit
+
+A fresh source pass confirms that the Android target cannot simply reuse the
+desktop native entry point. `src/main.rs` currently treats every non-WASM target
+as a desktop process: it parses CLI arguments, runs update-helper logic, starts
+the desktop recovery loop, and uses desktop startup/backend selection. Android
+needs a separate `android_main(AndroidApp)` path that creates the same
+`app::App` around an Android-aware `NativeOptions`.
+
+The platform layer is the main integration boundary. `src/platform.rs` currently
+uses `rfd::FileDialog` for native open/save dialogs and `arboard` for system
+clipboard access; folder reveal launches Explorer/Finder/xdg-open. These must be
+replaced or isolated for Android. Document access should use Android's Storage
+Access Framework (persistable URI permissions and content resolver streams),
+not pretend that picker results are ordinary durable filesystem paths.
+The desktop updater, remote-control listener and desktop-only helper processes
+also need to be excluded from Android while preserving the shared editor,
+engine, rendering, autosave and export logic where their APIs permit.
+
+The first safe integration sequence is therefore:
+1. keep desktop startup and its dependencies unchanged;
+2. add an Android-specific native entry point and target-specific dependency set;
+3. introduce Android document handles/stream I/O behind the platform boundary;
+4. adapt app open/save/export call sites to that abstraction;
+5. then enable the editor modules on Android and validate touch, stylus and lifecycle.
+
+Do not enable the whole root binary for Android until these seams compile cleanly;
+the separate probe remains the guard for eframe/winit/GameActivity compatibility.
