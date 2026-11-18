@@ -95,7 +95,7 @@ A successful cross-compile alone does not establish runtime, stylus or tablet su
 
 ## Work started on `android-port`
 
-### Android backend probe (scaffolded; build not yet run)
+### Android backend probe and Gradle host (scaffolded; CI pending)
 
 An isolated crate now lives in `android/probe/`. It is intentionally outside the
 root workspace so it cannot enable Android-only features in the desktop/web
@@ -111,14 +111,20 @@ repository lockfile:
 Build instructions are in `android/probe/README.md`. The expected ARM64
 artifact is `android/probe/target/aarch64-linux-android/release/libmain.so`.
 
-**Current status:** source scaffold committed; no Android cross-build has been
-run in this environment yet. APK packaging, GameActivity host integration and
-on-device validation remain open. The probe must pass its ARM64 build before
-its configuration is used as the basis for the full editor target.
+**Current status:** the isolated Rust probe remains a backend test, not the editor.
+A first Android Gradle application scaffold now lives in `android/`: an AndroidX
+GameActivity host, manifest, ARM64 native-library staging task, and instructions in
+`android/README.md`. Gradle invokes `cargo-ndk` to build the probe and packages
+`libmain.so` into a debug APK. The app is not yet known to build or launch; CI and
+physical-device validation are still required.
 
+The GitHub Actions workflow `.github/workflows/android-probe.yml` installs the
+Android SDK tools and a pinned NDK, then cross-compiles the probe. It also triggers
+for changes anywhere under `android/`. The first workflow attempt failed during
+SDK/NDK installation before Rust compilation. The workflow was adjusted to avoid
+the retired legacy SDK `tools` package and install NDK r27d explicitly; the next
+run must confirm whether this resolves the environment failure.
 
-A dedicated GitHub Actions workflow, `.github/workflows/android-probe.yml`, now
-cross-compiles this probe for `arm64-v8a` with the Android NDK and uploads the
-native library as a short-lived CI artifact. It runs when the probe or its workflow
-changes on `android-port`, on matching pull requests, or by manual dispatch.
-The workflow has been added but has not yet been observed completing successfully.
+The Gradle host currently packages only the probe. It does not yet link the real
+AniCraft app modules or implement Android document picking, persistence, lifecycle
+recovery, touch/stylus handling or export destinations.
