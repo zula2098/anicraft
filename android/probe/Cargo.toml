@@ -1,0 +1,19 @@
+[package]
+name = "anicraft-android-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Isolated Android backend smoke test for AniCraft"
+
+[lib]
+name = "main"
+crate-type = ["cdylib"]
+
+[dependencies]
+eframe = { version = "0.36", default-features = false, features = ["accesskit", "default_fonts", "wgpu", "android-game-activity"] }
+winit = { version = "0.30", default-features = false, features = ["android-game-activity"] }
+
+# Keep this probe in its own workspace so it does not change AniCraft's desktop/web
+# dependency graph or the root workspace lockfile.
+[workspace]
