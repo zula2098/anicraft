@@ -1,7 +1,7 @@
-# Android app scaffold
+# Android app
 
-This directory contains the first Android packaging host for the isolated Rust
-backend probe. It is **not yet the full AniCraft editor**.
+This directory contains the AndroidX GameActivity host and Gradle packaging
+project for the native AniCraft editor.
 
 ## Requirements
 
@@ -23,9 +23,12 @@ from this directory run:
 gradle :app:assembleDebug
 ```
 
-The Gradle `preBuild` task cross-compiles `android/probe` for `arm64-v8a`
-and stages `libmain.so` into the APK's native-library directory. The resulting
-debug APK is:
+The Gradle `preBuild` task builds the root AniCraft crate as an Android
+GameActivity `cdylib` (`--no-default-features --features android`) for
+`arm64-v8a` and stages `libmain.so` into the APK's native-library directory.
+The Java activity loads that library through AndroidX GameActivity.
+
+The resulting debug APK is:
 
 ```
 app/build/outputs/apk/debug/app-debug.apk
@@ -39,11 +42,12 @@ gradle :app:installDebug
 
 ## Current scope and limitations
 
-- The Java activity extends AndroidX GameActivity 4.4.2.
-- The native library is currently the small eframe/wgpu backend probe from
-  `probe/`, not the AniCraft editor.
-- Only ARM64 is wired into this first scaffold.
-- This is a packaging scaffold; a successful Gradle build and on-device launch
-  still need to be verified in CI and on physical hardware.
-- The editor's desktop startup, file dialogs, storage access, lifecycle recovery,
-  touch/stylus behavior and export destinations have not yet been ported.
+- The native entry point now starts the actual AniCraft `App` and sample
+  document, not the isolated eframe smoke-test screen.
+- Only ARM64 is wired into this first native build.
+- Android-specific document selection, persisted URI access, save/export
+  destinations, lifecycle recovery, touch/stylus refinements and audio
+  behavior still need dedicated implementation and device testing.
+- CI compilation and APK packaging do not prove that the editor launches or
+  behaves correctly on physical Android hardware. Treat runtime support as
+  unverified until a device test is recorded.
