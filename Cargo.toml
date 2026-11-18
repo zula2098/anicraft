@@ -149,6 +149,8 @@ cpal = { version = "0.18", optional = true }
 # objc2 / objc2-app-kit / objc2-foundation are the versions wgpu already brings on macOS.
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
 rfd.workspace = true
+# Desktop clipboard access (not available on Android or in the browser).
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 fmv-macos-events = "=0.1.0"
