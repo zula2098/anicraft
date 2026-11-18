@@ -7,12 +7,10 @@ use eframe::egui;
 struct ProbeApp;
 
 impl eframe::App for ProbeApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("AniCraft Android backend");
-            ui.label("GameActivity + eframe + wgpu started successfully.");
-            ui.label("This is a backend smoke test, not the full editor.");
-        });
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        ui.heading("AniCraft Android backend");
+        ui.label("GameActivity + eframe + wgpu started successfully.");
+        ui.label("This is a backend smoke test, not the full editor.");
     }
 }
 
