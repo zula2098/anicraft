@@ -31,7 +31,9 @@ jobs:
       - name: Install Android SDK and NDK
         uses: android-actions/setup-android@v3
         with:
-          ndk-version: 27.2.12479018
+          packages: |-
+            platform-tools
+            ndk;27.2.12479018
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
