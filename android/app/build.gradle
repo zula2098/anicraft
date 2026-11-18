@@ -1,0 +1,54 @@
+plugins {
+    id "com.android.application"
+}
+
+def repoRoot = rootProject.projectDir.parentFile
+def rustOutput = new File(repoRoot, "android/probe/target/aarch64-linux-android/release/libmain.so")
+def generatedJni = layout.buildDirectory.dir("generated/rustJniLibs")
+
+android {
+    namespace "org.anicraft.app"
+    compileSdk 36
+    ndkVersion "27.3.13750724"
+
+    defaultConfig {
+        applicationId "org.anicraft.app"
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDir(generatedJni)
+        }
+    }
+
+    buildFeatures {
+        prefab true
+    }
+}
+
+dependencies {
+    implementation "androidx.games:games-activity:4.4.2"
+}
+
+def buildRustAndroid = tasks.register("buildRustAndroid", Exec) {
+    workingDir repoRoot
+    commandLine "cargo", "ndk", "-t", "arm64-v8a", "build", "--release",
+        "--manifest-path", "android/probe/Cargo.toml"
+    inputs.file(new File(repoRoot, "android/probe/Cargo.toml"))
+    inputs.dir(new File(repoRoot, "android/probe/src"))
+    outputs.file(rustOutput)
+}
+
+def stageRustLibrary = tasks.register("stageRustLibrary", Copy) {
+    dependsOn(buildRustAndroid)
+    from(rustOutput)
+    into(generatedJni.map { new File(it.asFile, "arm64-v8a") })
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(stageRustLibrary)
+}
