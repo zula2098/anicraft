@@ -115,3 +115,10 @@ artifact is `android/probe/target/aarch64-linux-android/release/libmain.so`.
 run in this environment yet. APK packaging, GameActivity host integration and
 on-device validation remain open. The probe must pass its ARM64 build before
 its configuration is used as the basis for the full editor target.
+
+
+A dedicated GitHub Actions workflow, `.github/workflows/android-probe.yml`, now
+cross-compiles this probe for `arm64-v8a` with the Android NDK and uploads the
+native library as a short-lived CI artifact. It runs when the probe or its workflow
+changes on `android-port`, on matching pull requests, or by manual dispatch.
+The workflow has been added but has not yet been observed completing successfully.
