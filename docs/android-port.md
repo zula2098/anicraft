@@ -95,7 +95,7 @@ A successful cross-compile alone does not establish runtime, stylus or tablet su
 
 ## Work started on `android-port`
 
-### Android backend probe and Gradle host (scaffolded; CI pending)
+### Android backend probe and Gradle host (ARM64 probe verified; APK fix queued)
 
 An isolated crate now lives in `android/probe/`. It is intentionally outside the
 root workspace so it cannot enable Android-only features in the desktop/web
@@ -115,17 +115,12 @@ artifact is `android/probe/target/aarch64-linux-android/release/libmain.so`.
 A first Android Gradle application scaffold now lives in `android/`: an AndroidX
 GameActivity host, manifest, ARM64 native-library staging task, and instructions in
 `android/README.md`. Gradle invokes `cargo-ndk` to build the probe and packages
-`libmain.so` into a debug APK. The app is not yet known to build or launch; CI and
-physical-device validation are still required.
+`libmain.so` into a debug APK. The Rust ARM64 probe has now compiled successfully in GitHub Actions and its `libmain.so` artifact was uploaded. The first APK packaging attempt exposed a missing explicit AndroidX Core dependency required by GameActivity's Java API; `androidx.core:core:1.16.0` has now been added. The corrected APK build is awaiting CI. No runtime or physical-device validation has happened.
 
 The GitHub Actions workflow `.github/workflows/android-probe.yml` installs the
 Android SDK tools and a pinned NDK, cross-compiles the probe, and has a second job
 to package a debug APK with Gradle. It also triggers for changes anywhere under
-`android/`. The first workflow attempts failed during SDK/NDK installation before
-Rust compilation. After excluding the retired legacy SDK `tools` package and
-installing NDK r27d explicitly, the next run passed SDK, NDK and `cargo-ndk`
-installation and reached the Rust compile step. The APK job has been added to the
-latest workflow revision and still needs its first result.
+`android/`. The initial workflow attempts failed during SDK/NDK installation. After excluding the retired SDK `tools` package and installing NDK r27d explicitly, run 6 completed the ARM64 Rust build successfully (`Finished release profile`) and uploaded the native probe artifact. Its Gradle job then failed at Java compilation because `androidx.core.view.OnApplyWindowInsetsListener` was not on the compile classpath. The missing explicit AndroidX Core dependency was added in commit `8044045`; the next CI run will verify the fix and APK packaging.
 
 The Gradle host currently packages only the probe. It does not yet link the real
 AniCraft app modules or implement Android document picking, persistence, lifecycle
