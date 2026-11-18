@@ -31,7 +31,7 @@ cargo ndk -t arm64-v8a build --release --manifest-path android/probe/Cargo.toml
 The expected native library is:
 
 ```
-target/aarch64-linux-android/release/libmain.so
+android/probe/target/aarch64-linux-android/release/libmain.so
 ```
 
 A successful cross-build proves that the selected eframe GameActivity backend
