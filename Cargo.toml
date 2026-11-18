@@ -100,6 +100,13 @@ sound-output = ["dep:cpal"]
 # for anything the GPU can't draw. Preferences › Stage › Renderer can choose the CPU. Build with
 # `--no-default-features --features sound-output` for a CPU-only shell.
 gpu-stage = ["dep:anicraft-gpu"]
+# Native Android entry point (GameActivity + eframe/winit).
+android = ["eframe/android-game-activity"]
+
+[lib]
+name = "main"
+path = "src/main.rs"
+crate-type = ["cdylib"]
 
 [[bin]]
 name = "anicraft"
