@@ -31,6 +31,8 @@ android {
 }
 
 dependencies {
+    // GameActivity exposes AndroidX Core window-insets types in its Java API.
+    implementation "androidx.core:core:1.16.0"
     implementation "androidx.games:games-activity:4.4.2"
 }
 
