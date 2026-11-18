@@ -1176,24 +1176,24 @@ const CLIPBOARD_IMAGE_SIDE: u32 = 16_384;
 /// The picture the system clipboard holds, if it holds one (a screenshot, or pixels copied in a
 /// paint program). `None` in a browser, where the page cannot read the clipboard unasked.
 pub fn clipboard_image() -> Option<ClipboardImage> {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         let image = arboard::Clipboard::new().ok()?.get_image().ok()?;
         let (width, height) = (u32::try_from(image.width).ok()?, u32::try_from(image.height).ok()?);
         let bytes = usize::try_from(u64::from(width) * u64::from(height) * 4).ok()?;
         (width > 0 && height > 0 && width <= CLIPBOARD_IMAGE_SIDE && height <= CLIPBOARD_IMAGE_SIDE && image.bytes.len() == bytes).then(|| ClipboardImage { width, height, rgba: image.bytes.into_owned() })
     }
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     None
 }
 
 /// The text the system clipboard holds, if it holds text.
 pub fn clipboard_text() -> Option<String> {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         arboard::Clipboard::new().ok()?.get_text().ok()
     }
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     None
 }
 
