@@ -2,7 +2,7 @@ name: Android backend probe
 
 on:
   push:
-    branches: [android-port]
+    branches: [android-port, feat/fla-vector-export]
     paths:
       - "android/**"
       - "Cargo.toml"
