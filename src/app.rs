@@ -3353,7 +3353,7 @@ impl App {
                 let done = trn!("Exported {path} ({n} frame, {layers} layers).", "Exported {path} ({n} frames, {layers} layers).", v["frames"].as_u64().unwrap_or(0), path = v["written"].as_str().unwrap_or(""), layers = v["layers"]);
                 self.status_ok(format!("{done}{report}"));
             }
-            "file.export_png" | "file.export_png_sequence" | "file.export_gif" | "file.export_svg" | "file.export_video" | "file.export_fla" => self.status_ok(tr!("Exported {path}", path = v.get("written").or_else(|| v.get("dir")).and_then(Value::as_str).unwrap_or(""))),
+            "file.export_png" | "file.export_png_sequence" | "file.export_gif" | "file.export_svg" | "file.export_video" | "file.export_fla" | "file.export_fla_vector" => self.status_ok(tr!("Exported {path}", path = v.get("written").or_else(|| v.get("dir")).and_then(Value::as_str).unwrap_or(""))),
             // Undo labels are the engine's English, translated when a catalog has them.
             "edit.undo" => self.status_ok(tr!("Undid {action}", action = crate::i18n::t_dyn(v["undone"].as_str().unwrap_or("")))),
             "edit.redo" => self.status_ok(tr!("Redid {action}", action = crate::i18n::t_dyn(v["redone"].as_str().unwrap_or("")))),

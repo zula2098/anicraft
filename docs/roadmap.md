@@ -4,13 +4,13 @@ Principle: **infrastructure first, then high-traffic parity, then the long tail.
 milestone ends with a green tree: build, tests, clippy, a `--screenshot` check and an updated
 "Honest status" section below.
 
-## Honest status (2026-11-09, v0.1.0 early alpha)
+## Honest status (2026-11-19, v0.1.0 early alpha)
 
 Streaming WAV headers and PCM sample blocks now delegate to `craft_audio::wav_stream`;
 AniCraft retains mixing, frame-range limits, temporary-file cleanup and VFS writes.
 This integration depends on craft-libs #1962 and still requires hosted parity validation.
 
-A first **FLA export** is being added in `feat/fla-raster-export`: it writes a real XFL ZIP package with one rendered PNG per movie frame on a single Animate timeline layer. This preserves rendered appearance and timing, not editable vectors, text, symbols, source layers, sound or scripts. The round-trip test through AniCraft's importer is in CI; opening the generated file in Adobe Animate has not yet been verified.
+A first **rasterized FLA export** is in `feat/fla-raster-export`: it writes an XFL ZIP package with one rendered PNG per movie frame on a single Animate timeline layer. A separate experimental **editable-vector FLA export** is in `feat/fla-vector-export`: it writes native XFL shape edges, solid fills/strokes, layer visibility and keyframe spans. That first vector slice rejects symbols, text, groups, gradients, bitmap fills, variable-width/dashed strokes, colour effects and non-normal layers; cubic curves are approximated by editable line segments. Importer round-trip coverage is being added in CI. Neither export has yet been verified by opening the result in Adobe Animate.
 
 | Dimension | Status |
 |---|---|

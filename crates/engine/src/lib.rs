@@ -6,6 +6,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 mod anim;
+mod fla;
 mod cmds_actions;
 mod cmds_bone;
 mod cmds_warp;

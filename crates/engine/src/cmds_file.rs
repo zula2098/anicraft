@@ -39,6 +39,15 @@ pub fn specs() -> Vec<CommandSpec> {
         },
         CommandSpec { id: "file.export_svg", label: "Export Frame as SVG…", menu: "File/Export", shortcut: None, params: "{path, frame? (in the current scene), confirm?}", mutates: false, run: export_svg },
         CommandSpec {
+            id: "file.export_fla_vector",
+            label: "Export FLA (editable vectors, beta)…",
+            menu: "File/Export",
+            shortcut: None,
+            params: "{path (.fla): editable vector subset; plain shapes, layers and keyframes}",
+            mutates: false,
+            run: export_fla_vector,
+        },
+        CommandSpec {
             id: "file.export_fla",
             label: "Export FLA (rasterized)…",
             menu: "File/Export",
@@ -910,8 +919,23 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// Export an Animate-compatible FLA package. The first implementation deliberately
-/// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved,
-/// while source vectors remain editable only after a future native XFL serializer is added.
+/// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved.
+/// The separate beta vector command exports the currently supported editable-shape subset.
+
+fn export_fla_vector(s: &mut Session, p: &Value) -> Result<Value> {
+    let path = PathBuf::from(str_req(p, "path")?);
+    let (bytes, frames, shapes) = crate::fla::export(&s.doc, &path)?;
+    crate::vfs::write(&path, &bytes)?;
+    Ok(json!({
+        "written": path.display().to_string(),
+        "frames": frames,
+        "shapes": shapes,
+        "bytes": bytes.len(),
+        "editable": true,
+        "rasterized": false
+    }))
+}
+
 fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     const MAX_FLA_PIXELS: u64 = 100_000_000;
     const MAX_FLA_BYTES: usize = 256 * 1024 * 1024;
