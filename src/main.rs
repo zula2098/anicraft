@@ -321,7 +321,12 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
         options,
         Box::new(move |cc| {
             startup::log_adapter(cc.wgpu_render_state.as_ref());
-            Ok(Box::new(app::App::new(cc, session, None)))
+            let mut app = app::App::new(cc, session, None);
+            // A phone has much less physical screen area than the desktop layout targets.
+            // Keep the user's smaller setting, but start Android at a compact 80% scale.
+            app.prefs.ui_scale = app.prefs.ui_scale.min(0.8);
+            app.apply_prefs(&cc.egui_ctx);
+            Ok(Box::new(app))
         }),
     );
 }
