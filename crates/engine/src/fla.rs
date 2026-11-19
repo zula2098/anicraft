@@ -315,7 +315,8 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     if stage.background.a != 1.0 {
         return Err(EngineError::Format("native FLA export does not yet support a translucent stage background".into()));
     }
-    let (media, mut sound_files) = sound_media_xml(doc)?;\n    let xml_doc = format!("<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><DOMDocument xmlns=\\\"http://ns.adobe.com/xfl/2008/\\\" width=\\\"{}\\\" height=\\\"{}\\\" frameRate=\\\"{}\\\" backgroundColor=\\\"{}\\\" currentTimeline=\\\"1\\\" xflVersion=\\\"2.971\\\" creatorInfo=\\\"AniCraft\\\"><folders/><media>{media}</media>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
+    let (media, mut sound_files) = sound_media_xml(doc)?;
+    let xml_doc = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
     if xml_doc.len() > MAX_VECTOR_XML_BYTES {
         return Err(EngineError::Format("native FLA document XML exceeds the 64 MB safety limit".into()));
     }
