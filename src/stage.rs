@@ -760,7 +760,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
     }
 
-    if resp.drag_stopped() || (app.drag != Drag::None && !ui.input(|i| i.pointer.primary_down())) {
+    if resp.drag_stopped() || (app.drag != Drag::None && ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary))) {
         match app.drag {
             Drag::Move { .. } | Drag::SnapMove { .. } | Drag::CameraMove { .. } => {
                 app.drop_raw();
