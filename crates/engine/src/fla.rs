@@ -361,20 +361,25 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         if text.field.is_some() || !text.filters.is_empty() {
                             return Err(EngineError::Format(format!("text element '{}' has a dynamic field or filters that cannot yet be represented as editable vector paths", element.name)));
                         }
-                        *total_shapes += 1;
-                        if *total_shapes > MAX_VECTOR_SHAPES {
-                            return Err(EngineError::Format("native FLA export exceeds the 100,000-shape safety limit".into()));
+                        for (color, _url, outline) in text.fill_paths() {
+                            if outline.cmds.is_empty() {
+                                continue;
+                            }
+                            *total_shapes += 1;
+                            if *total_shapes > MAX_VECTOR_SHAPES {
+                                return Err(EngineError::Format("native FLA export exceeds the 100,000-shape safety limit".into()));
+                            }
+                            let outlines = anicraft_doc::Shape {
+                                path: outline,
+                                fill: Some(Paint::Solid(color)),
+                                stroke: None,
+                                fill_rule: anicraft_geom::FillRule::NonZero,
+                                merge: false,
+                                warp: None,
+                            };
+                            let shape = shape_xml(&outlines, element.transform, bitmap_names)?;
+                            push_bounded(&mut elements, &shape)?;
                         }
-                        let outlines = anicraft_doc::Shape {
-                            path: text.outline.clone(),
-                            fill: Some(Paint::Solid(text.color)),
-                            stroke: None,
-                            fill_rule: anicraft_geom::FillRule::NonZero,
-                            merge: false,
-                            warp: None,
-                        };
-                        let shape = shape_xml(&outlines, element.transform, bitmap_names)?;
-                        push_bounded(&mut elements, &shape)?;
                     }
                     ElementKind::Symbol { symbol, loop_mode, first_frame, .. } => {
                         let name = symbol_names.get(symbol).ok_or_else(|| EngineError::Format(format!("symbol instance '{}' references missing library item {}", element.name, symbol.0)))?;
