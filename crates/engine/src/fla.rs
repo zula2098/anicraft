@@ -197,8 +197,8 @@ fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> 
     Ok((media, files))
 }
 
-fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<String> {
-    let Some(frame_sound) = &key.sound else { return Ok(String::new()) };
+fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<(String, String)> {
+    let Some(frame_sound) = &key.sound else { return Ok((String::new(), String::new())) };
     let sound = doc.sound(frame_sound.sound).ok_or_else(|| {
         EngineError::Format(format!("keyframe references missing sound {}", frame_sound.sound.0))
     })?;
@@ -227,7 +227,7 @@ fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<Strin
         }
         preset => attrs.push_str(&format!(" soundEffect=\"{}\"", xml(preset.label()))),
     }
-    Ok(format!("{attrs}{envelope}"))
+    Ok((attrs, envelope))
 }
 
 fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes: &mut usize) -> Result<String> {
@@ -268,8 +268,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             }
             push_bounded(&mut elements, "</elements>")?;
             let label = if key.label.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&key.label)) };
-            let sound = frame_sound_xml(key, doc)?;
-            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}{sound}>{elements}</DOMFrame>", key.start, key.duration.max(1));
+            let (sound_attrs, sound_envelope) = frame_sound_xml(key, doc)?;
+            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}{sound_attrs}>{sound_envelope}{elements}</DOMFrame>", key.start, key.duration.max(1));
             push_bounded(&mut frames, &frame_xml)?;
         }
         push_bounded(&mut frames, "</frames>")?;
