@@ -26,6 +26,9 @@ const IMMEDIATE_BUDGET_MS: f32 = 12.0;
 /// pan only needs a strip of new tiles.
 pub const TILE: u32 = 512;
 /// Tile textures kept on the GPU (≈ 1 MB each); least recently used ones are dropped.
+#[cfg(target_os = "android")]
+const MAX_TILE_TEXTURES: usize = 48;
+#[cfg(not(target_os = "android"))]
 const MAX_TILE_TEXTURES: usize = 192;
 
 /// A finished tile on the GPU.
