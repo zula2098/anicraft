@@ -39,6 +39,24 @@ pub fn specs() -> Vec<CommandSpec> {
         },
         CommandSpec { id: "file.export_svg", label: "Export Frame as SVG…", menu: "File/Export", shortcut: None, params: "{path, frame? (in the current scene), confirm?}", mutates: false, run: export_svg },
         CommandSpec {
+            id: "file.export_fla_vectors",
+            label: "Export FLA (editable shapes)…",
+            menu: "File/Export",
+            shortcut: None,
+            params: "{path (.fla): one scene; solid filled paths, layers and keyframes}",
+            mutates: false,
+            run: export_fla_vectors,
+        },
+        CommandSpec {
+            id: "file.export_fla",
+            label: "Export FLA (rasterized)…",
+            menu: "File/Export",
+            shortcut: None,
+            params: "{path (.fla), from?, to? (movie frames: every scene in order)}",
+            mutates: false,
+            run: export_fla,
+        },
+        CommandSpec {
             id: "file.export_video",
             label: "Export Video…",
             menu: "File/Export",
@@ -898,6 +916,235 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
     }
     crate::vfs::write(&path, &bytes)?;
     Ok(json!({"written": path.display().to_string(), "frames": n, "bytes": bytes.len(), "width": w, "height": h}))
+}
+
+/// Export an Animate-compatible FLA package. The first implementation deliberately
+/// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved,
+/// while source vectors remain editable only after a future native XFL serializer is added.
+fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
+    const MAX_FLA_PIXELS: u64 = 100_000_000;
+    const MAX_FLA_BYTES: usize = 256 * 1024 * 1024;
+    const MAX_FLA_FRAMES: u32 = 10_000;
+
+    let path = PathBuf::from(str_req(p, "path")?);
+    if path.extension().and_then(|e| e.to_str()).is_none_or(|e| !e.eq_ignore_ascii_case("fla")) {
+        return Err(EngineError::Param("FLA export needs a .fla file name".into()));
+    }
+    let last = s.doc.frame_count().saturating_sub(1);
+    let from = opt_u32(p, "from")?.unwrap_or(0).min(last);
+    let to = opt_u32(p, "to")?.unwrap_or(last).min(last);
+    if to < from {
+        return Err(EngineError::Param("'to' must not be before 'from'".into()));
+    }
+    let count = to.saturating_sub(from).saturating_add(1);
+    let pixels = u64::from(s.doc.stage.width)
+        .saturating_mul(u64::from(s.doc.stage.height))
+        .saturating_mul(u64::from(count));
+    if count > MAX_FLA_FRAMES || pixels > MAX_FLA_PIXELS {
+        return Err(EngineError::Param(format!(
+            "that FLA export is too large ({count} frames at {}×{}); export a shorter range",
+            s.doc.stage.width, s.doc.stage.height
+        )));
+    }
+
+    let doc = &s.doc;
+    let view = View::stage(doc, 1.0);
+    let job = s.job.as_deref();
+    let frames: Vec<Vec<u8>> = (from..=to)
+        .into_par_iter()
+        .map(|frame| {
+            let (pixmap, _) = render(&anicraft_doc::evaluate(doc, frame), &view)?;
+            let png = pixmap.encode_png().map_err(|e| EngineError::Format(e.to_string()))?;
+            crate::publish::tick(job, 1)?;
+            Ok(png)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let total_png_bytes = frames.iter().try_fold(0usize, |total, frame| total.checked_add(frame.len()))
+        .ok_or_else(|| EngineError::Param("FLA export size overflow".into()))?;
+    if total_png_bytes > MAX_FLA_BYTES {
+        return Err(EngineError::Param("the rendered FLA assets exceed the 256 MB export limit; export a shorter range".into()));
+    }
+
+    let stage = doc.stage;
+    let fps = format!("{:.3}", stage.fps);
+    let mut media = String::new();
+    let mut timeline_frames = String::new();
+    let mut files = Vec::with_capacity(frames.len() + 3);
+    for (index, png) in frames.into_iter().enumerate() {
+        let file = format!("frame_{index:06}.png");
+        let library_name = format!("Frames/{file}");
+        let id = format!("00000000-0000-0000-0000-{index:012}");
+        media.push_str(&format!(
+            "<DOMBitmapItem name=\"{library_name}\" itemID=\"{id}\" sourceExternalFilepath=\"./LIBRARY/{library_name}\" allowSmoothing=\"true\" useImportedJPEGData=\"false\" compressionType=\"lossless\" originalCompressionType=\"lossless\" quality=\"50\" href=\"{library_name}\" frameRight=\"{}\" frameBottom=\"{}\"/>",
+            u64::from(stage.width) * 20,
+            u64::from(stage.height) * 20,
+        ));
+        timeline_frames.push_str(&format!(
+            "<DOMFrame index=\"{index}\" duration=\"1\" keyMode=\"9728\"><elements><DOMBitmapInstance libraryItemName=\"{library_name}\"><matrix><Matrix a=\"1\" b=\"0\" c=\"0\" d=\"1\" tx=\"0\" ty=\"0\"/></matrix></DOMBitmapInstance></elements></DOMFrame>"
+        ));
+        files.push((PathBuf::from("LIBRARY").join("Frames").join(file), png));
+    }
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
+        stage.width, stage.height, fps, stage.background.to_hex()
+    );
+    files.push((PathBuf::from("DOMDocument.xml"), xml.into_bytes()));
+    let marker_name = path.file_stem().and_then(|name| name.to_str()).filter(|name| !name.is_empty()).unwrap_or("AniCraft");
+    files.push((PathBuf::from(format!("{marker_name}.xfl")), b"PROXY-CS5".to_vec()));
+    files.push((PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()));
+    let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
+    crate::vfs::write(&path, &bytes)?;
+    Ok(json!({
+        "written": path.display().to_string(),
+        "frames": count,
+        "bytes": bytes.len(),
+        "width": stage.width,
+        "height": stage.height,
+        "rasterized": true
+    }))
+}
+
+
+/// Writes the editable subset of a document as native XFL shapes and keyframes.
+/// Unsupported artwork is rejected rather than silently flattened.
+fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
+    const MAX_XML_BYTES: usize = 64 * 1024 * 1024;
+    let path = PathBuf::from(str_req(p, "path")?);
+    if path.extension().and_then(|e| e.to_str()).is_none_or(|e| !e.eq_ignore_ascii_case("fla")) {
+        return Err(EngineError::Param("FLA export needs a .fla file name".into()));
+    }
+    if s.doc.scenes.len() != 1 {
+        return Err(EngineError::Param("editable FLA export currently supports one scene; use rasterized export for multi-scene movies".into()));
+    }
+    let scene = s.doc.scenes.first().ok_or_else(|| EngineError::Param("the document has no scene".into()))?;
+    let mut layer_xml = String::new();
+    let mut shape_count = 0usize;
+    for layer in &scene.timeline.layers {
+        if layer.kind != anicraft_doc::LayerKind::Normal {
+            return Err(EngineError::Param(format!("editable FLA export does not yet support the '{}' layer type", layer.name)));
+        }
+        if layer.opacity < 0.999 || layer.muted || layer.depth != 0.0 || layer.rig_parent.is_some() {
+            return Err(EngineError::Param(format!("layer '{}' uses opacity, sound or parenting features not yet supported", layer.name)));
+        }
+        let mut frames = String::new();
+        for key in &layer.keyframes {
+            if key.tween.is_some() || key.motion.is_some() || key.sound.is_some() || key.script.is_some() {
+                return Err(EngineError::Param(format!("tweens, sound and scripts are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
+            }
+            let mut elements = String::new();
+            for element in &key.elements {
+                if element.color != anicraft_doc::ColorEffect::default() {
+                    return Err(EngineError::Param(format!("colour effects are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
+                }
+                let anicraft_doc::ElementKind::Shape(shape) = &element.kind else {
+                    return Err(EngineError::Param(format!("symbols, groups and non-shape elements are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
+                };
+                let fill = match &shape.fill {
+                    Some(anicraft_doc::Paint::Solid(fill)) if fill.a >= 0.999 => Some(*fill),
+                    None => None,
+                    _ => return Err(EngineError::Param(format!("editable FLA export currently requires opaque solid fills (layer '{}', frame {})", layer.name, key.start + 1))),
+                };
+                let stroke = match &shape.stroke {
+                    Some(stroke) if stroke.profile.is_none() && stroke.style.is_default() && stroke.color.a >= 0.999 && stroke.width.is_finite() && stroke.width > 0.0 => Some(stroke),
+                    None => None,
+                    _ => return Err(EngineError::Param(format!("editable FLA export supports only opaque, uniform solid strokes with default round caps/joins (layer '{}', frame {})", layer.name, key.start + 1))),
+                };
+                if fill.is_none() && stroke.is_none() {
+                    continue;
+                }
+                if shape.warp.is_some() {
+                    return Err(EngineError::Param(format!("warped shapes are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
+                }
+                if fill.is_some() && shape.fill_rule != anicraft_geom::FillRule::EvenOdd {
+                    return Err(EngineError::Param(format!("non-zero fill rules are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
+                }
+                let mut edges = String::new();
+                let mut current = String::new();
+                let mut start: Option<anicraft_geom::Vec2> = None;
+                let mut last: Option<anicraft_geom::Vec2> = None;
+                for cmd in &shape.path.cmds {
+                    match *cmd {
+                        anicraft_geom::PathCmd::MoveTo(point) => {
+                            if !current.is_empty() {
+                                edges.push_str(&format!("<Edge fillStyle1=\"{}\" strokeStyle=\"{}\" edges=\"{}\"/>", if fill.is_some() { 1 } else { 0 }, if stroke.is_some() { 1 } else { 0 }, current));
+                            }
+                            current = format!("!{} {}", point.x * 20.0, point.y * 20.0);
+                            start = Some(point);
+                            last = Some(point);
+                        }
+                        anicraft_geom::PathCmd::LineTo(point) => {
+                            if current.is_empty() { return Err(EngineError::Param("path segment before move command".into())); }
+                            current.push_str(&format!("|{} {}", point.x * 20.0, point.y * 20.0));
+                            last = Some(point);
+                        }
+                        anicraft_geom::PathCmd::QuadTo(control, point) => {
+                            if current.is_empty() { return Err(EngineError::Param("path segment before move command".into())); }
+                            current.push_str(&format!("[{} {} {} {}", control.x * 20.0, control.y * 20.0, point.x * 20.0, point.y * 20.0));
+                            last = Some(point);
+                        }
+                        anicraft_geom::PathCmd::CubicTo(_, _, _) => {
+                            return Err(EngineError::Param(format!("cubic Bézier paths are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
+                        }
+                        anicraft_geom::PathCmd::Close => {
+                            if let (Some(a), Some(b)) = (last, start) {
+                                if (a - b).length() > 0.0001 {
+                                    current.push_str(&format!("|{} {}", b.x * 20.0, b.y * 20.0));
+                                }
+                            }
+                            if !current.is_empty() {
+                                edges.push_str(&format!("<Edge fillStyle1=\"{}\" strokeStyle=\"{}\" edges=\"{}\"/>", if fill.is_some() { 1 } else { 0 }, if stroke.is_some() { 1 } else { 0 }, current));
+                            }
+                            current.clear();
+                            start = None;
+                            last = None;
+                        }
+                    }
+                }
+                if !current.is_empty() {
+                    edges.push_str(&format!("<Edge fillStyle1=\"{}\" strokeStyle=\"{}\" edges=\"{}\"/>", if fill.is_some() { 1 } else { 0 }, if stroke.is_some() { 1 } else { 0 }, current));
+                }
+                if edges.is_empty() { continue; }
+                let m = element.transform.m;
+                let matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", m[0], m[1], m[2], m[3], m[4], m[5]);
+                let fills = fill.map(|colour| format!("<fills><FillStyle index=\"1\"><SolidColor color=\"{}\"/></FillStyle></fills>", colour.to_hex().to_ascii_uppercase())).unwrap_or_else(|| "<fills/>".to_string());
+                let strokes = stroke.map(|line| format!("<strokes><StrokeStyle index=\"1\"><SolidStroke scaleMode=\"normal\" weight=\"{}\" caps=\"round\" joints=\"round\" miterLimit=\"3\"><fill><SolidColor color=\"{}\"/></fill></SolidStroke></StrokeStyle></strokes>", line.width, line.color.to_hex().to_ascii_uppercase())).unwrap_or_else(|| "<strokes/>".to_string());
+                elements.push_str(&format!("<DOMShape>{matrix}{fills}{strokes}<edges>{edges}</edges></DOMShape>"));
+                shape_count += 1;
+                if shape_count > 100_000 {
+                    return Err(EngineError::Param("editable FLA export exceeds 100,000 shapes".into()));
+                }
+            }
+            frames.push_str(&format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"><elements>{elements}</elements></DOMFrame>", key.start, key.duration.max(1)));
+        }
+        if frames.is_empty() {
+            frames.push_str("<DOMFrame index=\"0\" duration=\"1\" keyMode=\"9728\"><elements/></DOMFrame>");
+        }
+        let name = xml_escape(&layer.name);
+        let visible = if layer.visible { "true" } else { "false" };
+        layer_xml.push_str(&format!("<DOMLayer name=\"{name}\" visible=\"{visible}\" color=\"{}\"><frames>{frames}</frames></DOMLayer>", layer.color.to_hex().to_ascii_uppercase()));
+    }
+    let stage = s.doc.stage;
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><timelines><DOMTimeline name=\"{}\"><layers>{layer_xml}</layers></DOMTimeline></timelines></DOMDocument>",
+        stage.width, stage.height, stage.fps, stage.background.to_hex().to_ascii_uppercase(), xml_escape(&scene.name)
+    );
+    if xml.len() > MAX_XML_BYTES {
+        return Err(EngineError::Param("editable FLA document exceeds the 64 MB XML limit".into()));
+    }
+    let marker_name = path.file_stem().and_then(|name| name.to_str()).filter(|name| !name.is_empty()).unwrap_or("AniCraft");
+    let files = vec![
+        (PathBuf::from("DOMDocument.xml"), xml.into_bytes()),
+        (PathBuf::from(format!("{marker_name}.xfl")), b"PROXY-CS5".to_vec()),
+        (PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()),
+    ];
+    let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
+    crate::vfs::write(&path, &bytes)?;
+    Ok(json!({"written": path.display().to_string(), "bytes": bytes.len(), "shapes": shape_count, "layers": scene.timeline.layers.len(), "editable": true}))
+}
+
+fn xml_escape(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace(char::from(39), "&apos;")
 }
 
 fn set_stage(s: &mut Session, p: &Value) -> Result<Value> {

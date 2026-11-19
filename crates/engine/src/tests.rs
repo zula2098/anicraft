@@ -154,6 +154,61 @@ fn parallel_sequence_export_matches_single_frames() {
 }
 
 #[test]
+fn rasterized_fla_export_round_trips_as_an_animated_xfl_document() {
+    let path = std::env::temp_dir().join(format!("anicraft-raster-fla-{}.fla", std::process::id()));
+    let mut s = Session::new(sample::demo());
+    let result = run(
+        &mut s,
+        "file.export_fla",
+        json!({"path": path.display().to_string(), "from": 0, "to": 2}),
+    );
+    assert_eq!(result["frames"], 3);
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(bytes.starts_with(b"PK\x03\x04"));
+    let (imported, report) = anicraft_xfl::import_fla(&bytes).unwrap();
+    assert_eq!(imported.stage.width, s.doc.stage.width);
+    assert_eq!(imported.stage.height, s.doc.stage.height);
+    assert_eq!(imported.stage.fps, s.doc.stage.fps);
+    assert_eq!(imported.frame_count(), 3);
+    assert_eq!(imported.timeline(0).layers.len(), 1);
+    assert_eq!(imported.bitmaps.len(), 3);
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let _ = std::fs::remove_file(path);
+}
+
+
+#[test]
+fn editable_fla_export_round_trips_a_solid_vector_shape() {
+    let path = std::env::temp_dir().join(format!("anicraft-editable-fla-{}.fla", std::process::id()));
+    let mut s = Session::default();
+    run(&mut s, "draw.rect", json!({"x": 20, "y": 30, "w": 80, "h": 50, "fill": "#3366ff", "stroke": null, "object": true}));
+    {
+        let scene = std::sync::Arc::make_mut(&mut s.doc.scenes[0]);
+        let layer = std::sync::Arc::make_mut(&mut scene.timeline.layers[0]);
+        let key = std::sync::Arc::make_mut(&mut layer.keyframes[0]);
+        let element = std::sync::Arc::make_mut(&mut key.elements[0]);
+        if let anicraft_doc::ElementKind::Shape(shape) = &mut element.kind {
+            shape.fill_rule = anicraft_geom::FillRule::EvenOdd;
+            shape.stroke = Some(anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0xff2200), 3.0));
+        } else {
+            panic!("rectangle should be a vector shape");
+        }
+    }
+    let result = run(&mut s, "file.export_fla_vectors", json!({"path": path.display().to_string()}));
+    assert_eq!(result["editable"], true);
+    assert_eq!(result["shapes"], 1);
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(bytes.starts_with(b"PK\x03\x04"));
+    let (imported, report) = anicraft_xfl::import_fla(&bytes).unwrap();
+    assert_eq!(imported.stage.width, s.doc.stage.width);
+    assert_eq!(imported.timeline(0).layers.len(), 1);
+    assert_eq!(imported.timeline(0).layers[0].keyframes[0].elements.len(), 2, "fill and stroke should import as editable vector elements");
+    assert!(imported.timeline(0).layers[0].keyframes[0].elements.iter().any(|element| matches!(&element.kind, anicraft_doc::ElementKind::Shape(shape) if shape.stroke.as_ref().is_some_and(|stroke| (stroke.width - 3.0).abs() < 0.01))));
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn discarding_unsaved_work_needs_confirmation() {
     let mut s = Session::default();
     // clean document: no confirmation

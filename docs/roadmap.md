@@ -10,6 +10,8 @@ Streaming WAV headers and PCM sample blocks now delegate to `craft_audio::wav_st
 AniCraft retains mixing, frame-range limits, temporary-file cleanup and VFS writes.
 This integration depends on craft-libs #1962 and still requires hosted parity validation.
 
+**FLA export** in `feat/fla-raster-export` now has two paths: a rasterized XFL ZIP export for a selected movie-frame range, and a first native editable serializer for single-scene documents made of solid-filled vector paths on normal layers with keyframes. The editable path preserves solid-filled paths, plus opaque uniform solid strokes with default round caps/joins, transforms, layer order and frame spans; unsupported artwork is rejected rather than flattened. It does not yet cover styled/dashed or variable-width strokes, gradients, bitmaps, symbols/groups, text, cubic paths, tweens, masks/folders, sound or scripts. Round-trip tests through AniCraft's importer are being checked in CI; opening either output in Adobe Animate has not yet been verified.
+
 | Dimension | Status |
 |---|---|
 | Architecture | M0 skeleton in place: geom → doc → render → engine → cli → shell, layering enforced by `cargo test` (`src/architecture_tests.rs`: lower layers only, no UI crates below the shell, and the AGENTS.md map must match). |
