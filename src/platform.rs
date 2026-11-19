@@ -1028,7 +1028,7 @@ fn android_start_picker(title: &str, default_name: &str, open: bool) -> Option<F
         let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
         let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
         if vm_ptr.is_null() || activity_ptr.is_null() {
-            return Err("Android Activity is not available".into());
+            return Err(tr!("Android Activity is not available").into());
         }
         let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }
             .map_err(|e| e.to_string())?;
@@ -1074,7 +1074,7 @@ fn android_start_folder_picker(title: &str) -> Option<FileAnswer> {
         let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
         let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
         if vm_ptr.is_null() || activity_ptr.is_null() {
-            return Err("Android Activity is not available".into());
+            return Err(tr!("Android Activity is not available").into());
         }
         let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }.map_err(|e| e.to_string())?;
         let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
@@ -1171,7 +1171,7 @@ pub fn commit_android_folder(path: &Path) -> Result<(), String> {
     let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
     let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
     if vm_ptr.is_null() || activity_ptr.is_null() {
-        return Err("Android Activity is not available".into());
+        return Err(tr!("Android Activity is not available").into());
     }
     let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }.map_err(|e| e.to_string())?;
     let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
@@ -1183,7 +1183,7 @@ pub fn commit_android_folder(path: &Path) -> Result<(), String> {
         "(Ljava/lang/String;)Z",
         &[jni::objects::JValue::Object(&path)],
     ).map_err(|e| e.to_string())?.z().map_err(|e| e.to_string())?;
-    if copied { Ok(()) } else { Err("Android could not copy the exported files to the selected folder.".into()) }
+    if copied { Ok(()) } else { Err(tr!("Android could not copy the exported files to the selected folder.").into()) }
 }
 
 #[cfg(target_os = "android")]
@@ -1192,7 +1192,7 @@ pub fn commit_android_file(path: &Path) -> Result<(), String> {
     let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
     let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
     if vm_ptr.is_null() || activity_ptr.is_null() {
-        return Err("Android Activity is not available".into());
+        return Err(tr!("Android Activity is not available").into());
     }
     let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }.map_err(|e| e.to_string())?;
     let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
@@ -1204,7 +1204,7 @@ pub fn commit_android_file(path: &Path) -> Result<(), String> {
         "(Ljava/lang/String;)Z",
         &[jni::objects::JValue::Object(&path)],
     ).map_err(|e| e.to_string())?.z().map_err(|e| e.to_string())?;
-    if written { Ok(()) } else { Err("Android could not write the selected document. Check the storage provider's permission and available space.".into()) }
+    if written { Ok(()) } else { Err(tr!("Android could not write the selected document. Check the storage provider's permission and available space.").into()) }
 }
 
 
