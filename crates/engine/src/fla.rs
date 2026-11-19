@@ -284,14 +284,32 @@ pub(crate) fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> R
 
 fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes: &mut usize, symbol_names: &std::collections::HashMap<anicraft_doc::SymbolId, String>, bitmap_names: &std::collections::HashMap<anicraft_doc::BitmapId, String>) -> Result<String> {
     let mut out = String::from("<layers>");
-    // Both the document model and XFL store the frontmost layer first.
+    let layer_indices: std::collections::HashMap<_, _> = timeline.layers.iter().enumerate().map(|(index, layer)| (layer.id, index)).collect();
+    // Keep folders, masks and guides in the list: parentLayerIndex counts every layer in XFL.
     for layer in &timeline.layers {
-        if layer.kind == LayerKind::Folder { continue; }
-        if layer.kind != LayerKind::Normal {
-            return Err(EngineError::Format(format!("native FLA export does not yet support {:?} layers", layer.kind)));
+        let layer_type = match layer.kind {
+            LayerKind::Normal => "",
+            LayerKind::Mask => " layerType=\"mask\"",
+            LayerKind::Guide => " layerType=\"guide\"",
+            LayerKind::Folder => " layerType=\"folder\"",
+            other => return Err(EngineError::Format(format!("native FLA export does not yet support {:?} layers", other))),
+        };
+        let parent = match layer.parent {
+            Some(id) => {
+                let index = layer_indices.get(&id).ok_or_else(|| EngineError::Format(format!("layer '{}' has a missing parent", layer.name)))?;
+                format!(" parentLayerIndex=\"{}\"", index)
+            }
+            None => String::new(),
+        };
+        if layer.opacity != 1.0 || layer.depth != 0.0 || layer.attached || !layer.depth_keys.is_empty() {
+            return Err(EngineError::Format(format!("native FLA export does not yet support translucent or depth-managed layer '{}'", layer.name)));
         }
-        if layer.parent.is_some() || layer.opacity != 1.0 || layer.depth != 0.0 || layer.attached || !layer.depth_keys.is_empty() {
-            return Err(EngineError::Format(format!("native FLA export does not yet support parented, translucent, or depth-managed layer '{}'", layer.name)));
+        let visible = if layer.visible { "true" } else { "false" };
+        let locked = if layer.locked { "true" } else { "false" };
+        if layer.kind == LayerKind::Folder {
+            let folder = format!("<DOMLayer name=\"{}\" color=\"{}\" visible=\"{}\" locked=\"{}\"{layer_type}{parent}/>", xml(&layer.name), layer.color.to_hex(), visible, locked);
+            push_bounded(&mut out, &folder)?;
+            continue;
         }
         let mut frames = String::from("<frames>");
         for key in &layer.keyframes {
@@ -366,9 +384,7 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             push_bounded(&mut frames, &frame_xml)?;
         }
         push_bounded(&mut frames, "</frames>")?;
-        let visible = if layer.visible { "true" } else { "false" };
-        let locked = if layer.locked { "true" } else { "false" };
-        let layer_xml = format!("<DOMLayer name=\"{}\" color=\"{}\" visible=\"{}\" locked=\"{}\">{frames}</DOMLayer>", xml(&layer.name), layer.color.to_hex(), visible, locked);
+        let layer_xml = format!("<DOMLayer name=\"{}\" color=\"{}\" visible=\"{}\" locked=\"{}\"{layer_type}{parent}>{frames}</DOMLayer>", xml(&layer.name), layer.color.to_hex(), visible, locked);
         push_bounded(&mut out, &layer_xml)?;
     }
     push_bounded(&mut out, "</layers>")?;
