@@ -284,6 +284,41 @@ mod tests {
     }
 
     #[test]
+    fn converted_cubic_edges_obey_the_output_complexity_limit() {
+        let mut cmds = vec![PathCmd::MoveTo(anicraft_geom::Vec2::new(0.0, 0.0))];
+        cmds.extend((0..(MAX_VECTOR_PATH_COMMANDS / 12 + 1)).map(|_| {
+            PathCmd::CubicTo(
+                anicraft_geom::Vec2::new(1.0, 2.0),
+                anicraft_geom::Vec2::new(2.0, 2.0),
+                anicraft_geom::Vec2::new(3.0, 0.0),
+            )
+        }));
+        let error = edge_data(&Path { cmds }).expect_err("cubic expansion must remain bounded");
+        assert!(error.to_string().contains("100,000-edge safety limit"));
+    }
+
+    #[test]
+    fn coordinates_that_overflow_twips_are_rejected() {
+        let path = Path { cmds: vec![PathCmd::MoveTo(anicraft_geom::Vec2::new(f32::MAX, 0.0))] };
+        let error = edge_data(&path).expect_err("finite source coordinates can overflow XFL twips");
+        assert!(error.to_string().contains("finite XFL range"));
+    }
+
+    #[test]
+    fn invalid_miter_limits_are_rejected() {
+        let mut shape = Shape::filled(
+            Path::rect(0.0, 0.0, 10.0, 10.0),
+            Paint::Solid(anicraft_doc::Rgba::hex(0x336699)),
+        );
+        let mut stroke = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0);
+        stroke.style.miter_limit = f32::NAN;
+        shape.stroke = Some(stroke);
+        assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY)
+            .expect_err("non-finite miter limits must be rejected")
+            .to_string().contains("miter limit"));
+    }
+
+    #[test]
     fn cubic_path_without_a_move_is_rejected() {
         let path = Path {
             cmds: vec![PathCmd::CubicTo(
