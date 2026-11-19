@@ -263,7 +263,7 @@ pub(crate) fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> R
     let sound = doc.sound(frame_sound.sound).ok_or_else(|| {
         EngineError::Format(format!("keyframe references missing sound {}", frame_sound.sound.0))
     })?;
-    let name = sound_library_name(doc, sound);
+    let name = sound_library_name(doc, sound)?;
     let mut attrs = format!(" soundName=\"{}\" soundSync=\"{}\"", xml(&name), frame_sound.sync.key());
     if frame_sound.looping {
         attrs.push_str(" soundLoopMode=\"loop\"");
