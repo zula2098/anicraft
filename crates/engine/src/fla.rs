@@ -226,6 +226,46 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
+    fn cubic_paths_are_approximated_as_bounded_editable_edges() {
+        let path = Path {
+            cmds: vec![
+                PathCmd::MoveTo(anicraft_geom::Vec2::new(0.0, 0.0)),
+                PathCmd::CubicTo(
+                    anicraft_geom::Vec2::new(0.0, 10.0),
+                    anicraft_geom::Vec2::new(10.0, 10.0),
+                    anicraft_geom::Vec2::new(10.0, 0.0),
+                ),
+            ],
+        };
+        let edges = edge_data(&path).expect("a finite cubic path should export");
+        assert!(edges.starts_with("!0 0"));
+        assert_eq!(edges.matches('|').count(), 12, "one cubic is approximated by twelve editable line segments");
+    }
+
+    #[test]
+    fn vector_path_command_limit_is_enforced() {
+        let mut cmds = Vec::with_capacity(MAX_VECTOR_PATH_COMMANDS + 1);
+        cmds.push(PathCmd::MoveTo(anicraft_geom::Vec2::new(0.0, 0.0)));
+        cmds.extend((0..MAX_VECTOR_PATH_COMMANDS).map(|_| {
+            PathCmd::LineTo(anicraft_geom::Vec2::new(1.0, 1.0))
+        }));
+        let error = edge_data(&Path { cmds }).expect_err("oversized paths must be rejected");
+        assert!(error.to_string().contains("100,000-command safety limit"));
+    }
+
+    #[test]
+    fn cubic_path_without_a_move_is_rejected() {
+        let path = Path {
+            cmds: vec![PathCmd::CubicTo(
+                anicraft_geom::Vec2::new(1.0, 1.0),
+                anicraft_geom::Vec2::new(2.0, 2.0),
+                anicraft_geom::Vec2::new(3.0, 3.0),
+            )],
+        };
+        assert!(edge_data(&path).is_err());
+    }
+
+    #[test]
     #[allow(clippy::expect_used)]
     fn editable_vector_package_round_trips_through_xfl_importer() {
         let mut doc = Document::default();
