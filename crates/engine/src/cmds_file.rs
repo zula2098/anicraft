@@ -39,6 +39,15 @@ pub fn specs() -> Vec<CommandSpec> {
         },
         CommandSpec { id: "file.export_svg", label: "Export Frame as SVG…", menu: "File/Export", shortcut: None, params: "{path, frame? (in the current scene), confirm?}", mutates: false, run: export_svg },
         CommandSpec {
+            id: "file.export_fla",
+            label: "Export FLA (rasterized)…",
+            menu: "File/Export",
+            shortcut: None,
+            params: "{path (.fla), from?, to? (movie frames: every scene in order)}",
+            mutates: false,
+            run: export_fla,
+        },
+        CommandSpec {
             id: "file.export_video",
             label: "Export Video…",
             menu: "File/Export",
@@ -898,6 +907,92 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
     }
     crate::vfs::write(&path, &bytes)?;
     Ok(json!({"written": path.display().to_string(), "frames": n, "bytes": bytes.len(), "width": w, "height": h}))
+}
+
+/// Export an Animate-compatible FLA package. The first implementation deliberately
+/// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved,
+/// while source vectors remain editable only after a future native XFL serializer is added.
+fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
+    const MAX_FLA_PIXELS: u64 = 100_000_000;
+    const MAX_FLA_BYTES: usize = 512 * 1024 * 1024;
+    const MAX_FLA_FRAMES: u32 = 10_000;
+
+    let path = PathBuf::from(str_req(p, "path")?);
+    if path.extension().and_then(|e| e.to_str()).is_none_or(|e| !e.eq_ignore_ascii_case("fla")) {
+        return Err(EngineError::Param("FLA export needs a .fla file name".into()));
+    }
+    let last = s.doc.frame_count().saturating_sub(1);
+    let from = opt_u32(p, "from")?.unwrap_or(0).min(last);
+    let to = opt_u32(p, "to")?.unwrap_or(last).min(last);
+    if to < from {
+        return Err(EngineError::Param("'to' must not be before 'from'".into()));
+    }
+    let count = to.saturating_sub(from).saturating_add(1);
+    let pixels = u64::from(s.doc.stage.width)
+        .saturating_mul(u64::from(s.doc.stage.height))
+        .saturating_mul(u64::from(count));
+    if count > MAX_FLA_FRAMES || pixels > MAX_FLA_PIXELS {
+        return Err(EngineError::Param(format!(
+            "that FLA export is too large ({count} frames at {}×{}); export a shorter range",
+            s.doc.stage.width, s.doc.stage.height
+        )));
+    }
+
+    let doc = &s.doc;
+    let view = View::stage(doc, 1.0);
+    let job = s.job.as_deref();
+    let frames: Vec<Vec<u8>> = (from..=to)
+        .into_par_iter()
+        .map(|frame| {
+            let (pixmap, _) = render(&anicraft_doc::evaluate(doc, frame), &view)?;
+            let png = pixmap.encode_png().map_err(|e| EngineError::Format(e.to_string()))?;
+            crate::publish::tick(job, 1)?;
+            Ok(png)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let total_png_bytes = frames.iter().try_fold(0usize, |total, frame| total.checked_add(frame.len()))
+        .ok_or_else(|| EngineError::Param("FLA export size overflow".into()))?;
+    if total_png_bytes > MAX_FLA_BYTES {
+        return Err(EngineError::Param("the rendered FLA assets exceed the 512 MB export limit; export a shorter range".into()));
+    }
+
+    let stage = doc.stage;
+    let fps = format!("{:.3}", stage.fps);
+    let mut media = String::new();
+    let mut timeline_frames = String::new();
+    let mut files = Vec::with_capacity(frames.len() + 3);
+    for (index, png) in frames.iter().enumerate() {
+        let file = format!("frame_{index:06}.png");
+        let library_name = format!("Frames/{file}");
+        let id = format!("00000000-0000-0000-0000-{index:012}");
+        media.push_str(&format!(
+            "<DOMBitmapItem name=\"{library_name}\" itemID=\"{id}\" sourceExternalFilepath=\"./LIBRARY/{library_name}\" allowSmoothing=\"true\" useImportedJPEGData=\"false\" compressionType=\"lossless\" originalCompressionType=\"lossless\" quality=\"50\" href=\"{library_name}\" frameRight=\"{}\" frameBottom=\"{}\"/>",
+            u64::from(stage.width) * 20,
+            u64::from(stage.height) * 20,
+        ));
+        timeline_frames.push_str(&format!(
+            "<DOMFrame index=\"{index}\" duration=\"1\" keyMode=\"9728\"><elements><DOMBitmapInstance libraryItemName=\"{library_name}\"><matrix><Matrix/></matrix></DOMBitmapInstance></elements></DOMFrame>"
+        ));
+        files.push((PathBuf::from("LIBRARY").join("Frames").join(file), png.clone()));
+    }
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
+        stage.width, stage.height, fps, stage.background.to_hex()
+    );
+    files.push((PathBuf::from("DOMDocument.xml"), xml.into_bytes()));
+    files.push((PathBuf::from("AniCraft.xfl"), b"PROXY-CS5".to_vec()));
+    files.push((PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()));
+    let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
+    crate::vfs::write(&path, &bytes)?;
+    Ok(json!({
+        "written": path.display().to_string(),
+        "frames": count,
+        "bytes": bytes.len(),
+        "width": stage.width,
+        "height": stage.height,
+        "rasterized": true
+    }))
 }
 
 fn set_stage(s: &mut Session, p: &Value) -> Result<Value> {
