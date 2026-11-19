@@ -923,7 +923,7 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
 /// The separate beta vector command exports the currently supported editable-shape subset.
 
 fn write_fla_package(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
-    if bytes.len() < 4 || !bytes.starts_with(b"PK\\x03\\x04") {
+    if bytes.len() < 4 || !bytes.starts_with(b"PK\x03\x04") {
         return Err(EngineError::Format("FLA exporter produced an invalid or empty ZIP package".into()));
     }
     crate::vfs::write(path, bytes)?;
