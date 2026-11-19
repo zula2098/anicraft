@@ -282,6 +282,19 @@ pub(crate) fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> R
     Ok((attrs, envelope))
 }
 
+fn frame_script_xml(script: Option<&anicraft_doc::FrameScript>) -> Result<String> {
+    let Some(script) = script else { return Ok(String::new()) };
+    match script {
+        anicraft_doc::FrameScript::Source(source) if source.language == anicraft_doc::Language::ActionScript3 => {
+            source.check().map_err(|error| EngineError::Format(format!("frame script cannot be exported: {error}")))?;
+            Ok(format!("<Actionscript><script>{}</script></Actionscript>", xml(&source.text)))
+        }
+        anicraft_doc::FrameScript::Source(_) => Err(EngineError::Format("native FLA export currently supports ActionScript 3.0 source frame scripts only".into())),
+        anicraft_doc::FrameScript::Actions(_) => Err(EngineError::Format("native FLA export does not yet serialize AniCraft action-list frame scripts".into())),
+        anicraft_doc::FrameScript::Plugin(_) => Err(EngineError::Format("native FLA export does not yet serialize plug-in frame scripts".into())),
+    }
+}
+
 fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes: &mut usize, symbol_names: &std::collections::HashMap<anicraft_doc::SymbolId, String>, bitmap_names: &std::collections::HashMap<anicraft_doc::BitmapId, String>) -> Result<String> {
     let mut out = String::from("<layers>");
     let layer_indices: std::collections::HashMap<_, _> = timeline.layers.iter().enumerate().map(|(index, layer)| (layer.id, index)).collect();
@@ -318,7 +331,7 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             if end_frame > MAX_VECTOR_FRAMES {
                 return Err(EngineError::Format(format!("native FLA export is limited to {MAX_VECTOR_FRAMES} frames per scene")));
             }
-            if key.tween.is_some() || key.motion.is_some() || !key.hints.is_empty() || key.script.is_some() || !key.pose.is_empty() {
+            if key.tween.is_some() || key.motion.is_some() || !key.hints.is_empty() || !key.pose.is_empty() {
                 return Err(EngineError::Format(format!("native FLA export does not yet support tweens, frame scripts, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
             }
             let mut elements = String::from("<elements>");
@@ -380,7 +393,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             push_bounded(&mut elements, "</elements>")?;
             let label = if key.label.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&key.label)) };
             let (sound_attrs, sound_envelope) = frame_sound_xml(key, doc)?;
-            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}{sound_attrs}>{sound_envelope}{elements}</DOMFrame>", key.start, key.duration.max(1));
+            let script = frame_script_xml(key.script.as_ref())?;
+            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}{sound_attrs}>{sound_envelope}{script}{elements}</DOMFrame>", key.start, key.duration.max(1));
             push_bounded(&mut frames, &frame_xml)?;
         }
         push_bounded(&mut frames, "</frames>")?;
@@ -698,6 +712,24 @@ mod tests {
         assert_eq!(stops.len(), 3);
         assert!((stops[1].offset - 0.4).abs() < 0.001);
         assert!((start.x + 30.0).abs() < 0.01 && (end.x - 30.0).abs() < 0.01);
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn editable_vector_package_keeps_actionscript_frame_scripts() {
+        let mut doc = Document::default();
+        let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
+        key.script = Some(anicraft_doc::FrameScript::Source(Arc::new(anicraft_doc::SourceScript::new(
+            anicraft_doc::Language::ActionScript3,
+            "trace(\\\"hello\\\");",
+        ))));
+        let (bytes, _, _) = export(&doc, FsPath::new("script-roundtrip.fla")).expect("script package should export");
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the script package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        let script = opened.timeline(0).layers[0].keyframe_at(0).and_then(|key| key.script.as_ref()).expect("frame script should remain");
+        let Some(source) = script.source() else { panic!("source script should remain source text"); };
+        assert_eq!(source.text, "trace(\\\"hello\\\");");
     }
 
     #[test]
