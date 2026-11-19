@@ -154,6 +154,29 @@ fn parallel_sequence_export_matches_single_frames() {
 }
 
 #[test]
+fn rasterized_fla_export_round_trips_as_an_animated_xfl_document() {
+    let path = std::env::temp_dir().join(format!("anicraft-raster-fla-{}.fla", std::process::id()));
+    let mut s = Session::new(sample::demo());
+    let result = run(
+        &mut s,
+        "file.export_fla",
+        json!({"path": path.display().to_string(), "from": 0, "to": 2}),
+    );
+    assert_eq!(result["frames"], 3);
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(bytes.starts_with(b"PK\x03\x04"));
+    let (imported, report) = anicraft_xfl::import_fla(&bytes).unwrap();
+    assert_eq!(imported.stage.width, s.doc.stage.width);
+    assert_eq!(imported.stage.height, s.doc.stage.height);
+    assert_eq!(imported.stage.fps, s.doc.stage.fps);
+    assert_eq!(imported.frame_count(), 3);
+    assert_eq!(imported.timeline(0).layers.len(), 1);
+    assert_eq!(imported.bitmaps.len(), 3);
+    assert!(report.skipped.is_empty(), "{}", report.summary());
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn discarding_unsaved_work_needs_confirmation() {
     let mut s = Session::default();
     // clean document: no confirmation
