@@ -357,7 +357,7 @@ mod tests {
         key.start = MAX_VECTOR_FRAMES;
         key.duration = 2;
         let mut shapes = 0;
-        let error = timeline_xml(&doc.scenes[0].timeline, &mut shapes)
+        let error = timeline_xml(&doc.scenes[0].timeline, &doc, &mut shapes)
             .expect_err("keyframe ranges beyond the export limit must be rejected");
         assert!(error.to_string().contains("limited to 10,000 frames"));
     }
