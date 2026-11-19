@@ -504,7 +504,7 @@ mod tests {
             "tone.mp3",
             include_bytes!("../../audio/tests/data/tone.mp3").to_vec(),
         ).expect("the test MP3 should decode");
-        doc.sounds.push(sound);
+        doc.sounds.push(Arc::new(sound));
         let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
         let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
         key.sound = Some(anicraft_doc::FrameSound {
