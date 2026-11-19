@@ -5,6 +5,7 @@
 
 use crate::{EngineError, Result};
 use anicraft_doc::{Document, ElementKind, LayerKind, Paint};
+use anicraft_doc::sound::{SoundEffect, SoundFormat};
 use anicraft_geom::PathCmd;
 use anicraft_geom::Path;
 use std::path::{Path as FsPath, PathBuf};
@@ -166,7 +167,70 @@ fn push_bounded_to(out: &mut String, part: &str, limit: usize) -> Result<()> {
     Ok(())
 }
 
-fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> Result<String> {
+fn sound_library_name(sound: &anicraft_doc::Sound) -> String {
+    let extension = match sound.format {
+        SoundFormat::Wav => "wav",
+        SoundFormat::Ogg => "ogg",
+        SoundFormat::Mp3 => "mp3",
+    };
+    format!("Sounds/sound_{:012}.{}", sound.id.0, extension)
+}
+
+fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> {
+    let mut media = String::new();
+    let mut files = Vec::with_capacity(doc.sounds.len());
+    for sound in &doc.sounds {
+        if sound.data.is_empty() {
+            return Err(EngineError::Format(format!("sound '{}' has no audio data", sound.name)));
+        }
+        let name = sound_library_name(sound);
+        let id = format!("00000000-0000-0000-0000-{:012}", sound.id.0 % 1_000_000_000_000);
+        let rate_khz = ((sound.rate + 500) / 1000).max(1);
+        let channels = if sound.channels == 1 { "Mono" } else { "Stereo" };
+        let format = format!("{rate_khz}kHz 16bit {channels}");
+        push_bounded(&mut media, &format!(
+            "<DOMSoundItem name=\"{}\" itemID=\"{}\" sourceExternalFilepath=\"./LIBRARY/{}\" href=\"{}\" format=\"{}\"/>",
+            xml(&name), id, xml(&name), xml(&name), xml(&format)
+        ))?;
+        files.push((PathBuf::from("LIBRARY").join(&name), sound.data.as_ref().clone()));
+    }
+    Ok((media, files))
+}
+
+fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<String> {
+    let Some(frame_sound) = &key.sound else { return Ok(String::new()) };
+    let sound = doc.sound(frame_sound.sound).ok_or_else(|| {
+        EngineError::Format(format!("keyframe references missing sound {}", frame_sound.sound.0))
+    })?;
+    let name = sound_library_name(sound);
+    let mut attrs = format!(" soundName=\"{}\" soundSync=\"{}\"", xml(&name), frame_sound.sync.key());
+    if frame_sound.looping {
+        attrs.push_str(" soundLoopMode=\"loop\"");
+    } else if frame_sound.repeat > 1 {
+        attrs.push_str(&format!(" soundLoopMode=\"repeat\" soundLoop=\"{}\"", frame_sound.repeat));
+    }
+    let mut envelope = String::new();
+    match &frame_sound.effect {
+        SoundEffect::None => {}
+        SoundEffect::Custom(points) => {
+            attrs.push_str(" soundEffect=\"custom\"");
+            if !points.is_empty() {
+                envelope.push_str("<SoundEnvelope>");
+                for point in anicraft_doc::sound::clean_points(points) {
+                    let mark = (point.at * 44_100.0).round().clamp(0.0, u32::MAX as f64) as u32;
+                    let left = (f64::from(point.left) * 32_768.0).round().clamp(0.0, 32_768.0) as u32;
+                    let right = (f64::from(point.right) * 32_768.0).round().clamp(0.0, 32_768.0) as u32;
+                    envelope.push_str(&format!("<SoundEnvelopePoint mark44=\"{mark}\" level0=\"{left}\" level1=\"{right}\"/>"));
+                }
+                envelope.push_str("</SoundEnvelope>");
+            }
+        }
+        preset => attrs.push_str(&format!(" soundEffect=\"{}\"", xml(preset.label()))),
+    }
+    Ok(format!("{attrs}{envelope}"))
+}
+
+fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes: &mut usize) -> Result<String> {
     let mut out = String::from("<layers>");
     // Both the document model and XFL store the frontmost layer first.
     for layer in &timeline.layers {
@@ -184,8 +248,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> 
             if end_frame > MAX_VECTOR_FRAMES {
                 return Err(EngineError::Format(format!("native FLA export is limited to {MAX_VECTOR_FRAMES} frames per scene")));
             }
-            if key.tween.is_some() || key.motion.is_some() || !key.hints.is_empty() || key.sound.is_some() || key.script.is_some() || !key.pose.is_empty() {
-                return Err(EngineError::Format(format!("native FLA export does not yet support tweens, frame scripts, sounds, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
+            if key.tween.is_some() || key.motion.is_some() || !key.hints.is_empty() || key.script.is_some() || !key.pose.is_empty() {
+                return Err(EngineError::Format(format!("native FLA export does not yet support tweens, frame scripts, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
             }
             let mut elements = String::from("<elements>");
             for element in &key.elements {
@@ -204,7 +268,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> 
             }
             push_bounded(&mut elements, "</elements>")?;
             let label = if key.label.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&key.label)) };
-            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}>{elements}</DOMFrame>", key.start, key.duration.max(1));
+            let sound = frame_sound_xml(key, doc)?;
+            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}{sound}>{elements}</DOMFrame>", key.start, key.duration.max(1));
             push_bounded(&mut frames, &frame_xml)?;
         }
         push_bounded(&mut frames, "</frames>")?;
@@ -222,8 +287,8 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     if path.extension().and_then(|e| e.to_str()).is_none_or(|e| !e.eq_ignore_ascii_case("fla")) {
         return Err(EngineError::Param("FLA export needs a .fla file name".into()));
     }
-    if !doc.library.is_empty() || !doc.bitmaps.is_empty() || !doc.sounds.is_empty() || !doc.document_class.is_empty() {
-        return Err(EngineError::Format("native FLA export does not yet support library symbols, bitmaps, sounds, or document scripts".into()));
+    if !doc.library.is_empty() || !doc.bitmaps.is_empty() || !doc.document_class.is_empty() {
+        return Err(EngineError::Format("native FLA export does not yet support library symbols, bitmaps, or document scripts".into()));
     }
     let stage = doc.stage;
     if stage.width == 0 || stage.height == 0
@@ -242,7 +307,7 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     let mut shapes = 0usize;
     let mut timelines = String::from("<timelines>");
     for scene in &doc.scenes {
-        let layers = timeline_xml(&scene.timeline, &mut shapes)?;
+        let layers = timeline_xml(&scene.timeline, doc, &mut shapes)?;
         let timeline = format!("<DOMTimeline name=\"{}\">{layers}</DOMTimeline>", xml(&scene.name));
         push_bounded(&mut timelines, &timeline)?;
     }
@@ -250,17 +315,18 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     if stage.background.a != 1.0 {
         return Err(EngineError::Format("native FLA export does not yet support a translucent stage background".into()));
     }
-    let xml_doc = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
+    let (media, mut sound_files) = sound_media_xml(doc)?;\n    let xml_doc = format!("<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><DOMDocument xmlns=\\\"http://ns.adobe.com/xfl/2008/\\\" width=\\\"{}\\\" height=\\\"{}\\\" frameRate=\\\"{}\\\" backgroundColor=\\\"{}\\\" currentTimeline=\\\"1\\\" xflVersion=\\\"2.971\\\" creatorInfo=\\\"AniCraft\\\"><folders/><media>{media}</media>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
     if xml_doc.len() > MAX_VECTOR_XML_BYTES {
         return Err(EngineError::Format("native FLA document XML exceeds the 64 MB safety limit".into()));
     }
     let stem = path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()).unwrap_or("AniCraft");
-    let files = vec![
+    let mut files = vec![
         // XFL packages put the uncompressed mimetype entry first in the ZIP.
         (PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()),
         (PathBuf::from("DOMDocument.xml"), xml_doc.into_bytes()),
         (PathBuf::from(format!("{stem}.xfl")), b"PROXY-CS5".to_vec()),
     ];
+    files.append(&mut sound_files);
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
     Ok((bytes, frames, shapes))
 }
