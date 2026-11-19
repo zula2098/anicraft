@@ -25,7 +25,7 @@ fn point(v: anicraft_geom::Vec2) -> String {
     format!("{} {}", n(v.x * TWIPS), n(v.y * TWIPS))
 }
 
-fn edge_data(path: &Path, fill: bool) -> Result<String> {
+fn edge_data(path: &Path, _fill: bool) -> Result<String> {
     let mut out = String::new();
     let mut current = None;
     let mut start = None;
@@ -70,13 +70,11 @@ fn edge_data(path: &Path, fill: bool) -> Result<String> {
                 current = Some(p);
             }
             PathCmd::Close => {
-                if fill {
-                    if let (Some(at), Some(first)) = (current, start) {
+                if let (Some(at), Some(first)) = (current, start) {
                         if (at - first).length() > 0.0001 {
                             out.push('|');
                             out.push_str(&point(first));
                         }
-                    }
                 }
                 current = start;
             }
