@@ -30,6 +30,15 @@ android {
     }
 }
 
+// Align legacy Kotlin JDK7/JDK8 stdlib artifacts with the Kotlin stdlib
+// used by current AndroidX dependencies to avoid duplicate classes.
+configurations.configureEach {
+    resolutionStrategy.force(
+        "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22",
+        "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22"
+    )
+}
+
 dependencies {
     // GameActivity exposes AndroidX Core window-insets types in its Java API.
     implementation "androidx.core:core:1.16.0"
