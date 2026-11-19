@@ -426,7 +426,7 @@ pub fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
 
 /// Every attempt failed: the log says why, and a system message box says so (the window
 /// can't), with where the log is.
-#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn give_up(why: &str) {
     line(&format!("no way to open the window worked; last: {why}"));
     let log = log_path().map_or_else(String::new, |p| p.display().to_string());
@@ -435,6 +435,7 @@ pub fn give_up(why: &str) {
     } else {
         tr!("AniCraft couldn't open its window with this computer's graphics driver ({why}). Updating the graphics driver usually helps. If it doesn't, please attach this file to a bug report: {log}", why = why, log = log).to_string()
     };
+    #[cfg(not(target_os = "android"))]
     let _ = rfd::MessageDialog::new().set_level(rfd::MessageLevel::Error).set_title(tr!("AniCraft couldn't start")).set_description(text).set_buttons(rfd::MessageButtons::Ok).show();
 }
 
