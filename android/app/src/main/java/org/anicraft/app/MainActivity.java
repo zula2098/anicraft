@@ -29,14 +29,16 @@ public final class MainActivity extends GameActivity {
     private static native void nativeOnFilePicked(String cachedPath);
 
     public void openDocument(String title) {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        if (title != null && !title.isEmpty()) {
-            intent.putExtra(Intent.EXTRA_TITLE, title);
-        }
-        startActivityForResult(intent, REQUEST_OPEN_DOCUMENT);
+        runOnUiThread(() -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if (title != null && !title.isEmpty()) {
+                intent.putExtra(Intent.EXTRA_TITLE, title);
+            }
+            startActivityForResult(intent, REQUEST_OPEN_DOCUMENT);
+        });
     }
 
     @Override
