@@ -919,8 +919,8 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 /// Export an Animate-compatible FLA package. The first implementation deliberately
-/// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved,
-/// while source vectors remain editable only after a future native XFL serializer is added.
+/// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved.
+/// The separate beta vector command exports the currently supported editable-shape subset.
 
 fn export_fla_vector(s: &mut Session, p: &Value) -> Result<Value> {
     let path = PathBuf::from(str_req(p, "path")?);
