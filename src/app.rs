@@ -4387,16 +4387,16 @@ impl App {
                         match std::fs::metadata(&path) {
                             Ok(metadata) if metadata.len() == 0 => {
                                 if let Err(error) = std::fs::remove_file(&path) {
-                                    self.status_err(format!("Could not prepare the selected export destination: {error}"));
+                                    self.status_err(tr!("Could not prepare the selected export destination: {error}", error = error));
                                     return;
                                 }
                             }
                             Ok(_) => {
-                                self.status_err("The selected export staging file was not empty; refusing to overwrite it.");
+                                self.status_err(tr!("The selected export staging file was not empty; refusing to overwrite it."));
                                 return;
                             }
                             Err(error) => {
-                                self.status_err(format!("Could not inspect the selected export destination: {error}"));
+                                self.status_err(tr!("Could not inspect the selected export destination: {error}", error = error));
                                 return;
                             }
                         }
