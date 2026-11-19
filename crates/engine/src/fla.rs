@@ -497,6 +497,41 @@ mod tests {
 
     #[test]
     #[allow(clippy::expect_used)]
+    fn editable_vector_package_keeps_embedded_sound_and_frame_settings() {
+        let mut doc = Document::default();
+        let sound = anicraft_doc::Sound::from_data(
+            anicraft_doc::SoundId(77),
+            "tone.mp3",
+            include_bytes!("../../audio/tests/data/tone.mp3").to_vec(),
+        ).expect("the test MP3 should decode");
+        doc.sounds.push(sound);
+        let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
+        key.sound = Some(anicraft_doc::FrameSound {
+            sound: anicraft_doc::SoundId(77),
+            sync: anicraft_doc::SoundSync::Stream,
+            repeat: 1,
+            looping: true,
+            effect: anicraft_doc::SoundEffect::Custom(vec![
+                anicraft_doc::EnvelopePoint::new(0.0, 0.0, 1.0),
+                anicraft_doc::EnvelopePoint::new(0.25, 1.0, 0.0),
+            ]),
+        });
+
+        let (bytes, _, _) = export(&doc, FsPath::new("sound-roundtrip.fla")).expect("sound package should export");
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the sound package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        assert_eq!(opened.sounds.len(), 1);
+        assert_eq!(opened.sounds[0].format, SoundFormat::Mp3);
+        let imported = opened.timeline(0).layers.first().and_then(|layer| layer.keyframe_at(0))
+            .and_then(|key| key.sound.as_ref()).expect("frame sound should round-trip");
+        assert_eq!(imported.sync, anicraft_doc::SoundSync::Stream);
+        assert!(imported.looping);
+        assert!(matches!(imported.effect, SoundEffect::Custom(ref points) if points.len() == 2));
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
     fn editable_vector_package_round_trips_through_xfl_importer() {
         let mut doc = Document::default();
         let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
