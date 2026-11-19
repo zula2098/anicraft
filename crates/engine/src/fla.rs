@@ -443,7 +443,7 @@ mod tests {
         key.elements.push(Arc::new(Element {
             id: ElementId(9001),
             name: "editable rectangle".into(),
-            transform: anicraft_geom::Affine::translate(12.0, 8.0),
+            transform: anicraft_geom::Affine { m: [1.5, 0.25, -0.5, 0.75, 12.0, 8.0] },
             color: anicraft_doc::ColorEffect::default(),
             kind: ElementKind::Shape(shape),
         }));
@@ -459,7 +459,10 @@ mod tests {
         let imported = opened.timeline(0).layers.first().and_then(|l| l.keyframe_at(0));
         assert_eq!(imported.map(|k| k.elements.len()), Some(1));
         let element = imported.and_then(|k| k.elements.first()).expect("round-tripped shape should exist");
-        assert_eq!(element.transform.translation(), anicraft_geom::Vec2::new(12.0, 8.0));
+        let expected_transform = [1.5, 0.25, -0.5, 0.75, 12.0, 8.0];
+        for (actual, expected) in element.transform.m.iter().zip(expected_transform) {
+            assert!((actual - expected).abs() < 0.0001, "transform coefficient {actual} differs from {expected}");
+        }
         let ElementKind::Shape(imported_shape) = &element.kind else {
             panic!("round-tripped element should remain a vector shape");
         };
