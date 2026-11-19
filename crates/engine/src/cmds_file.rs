@@ -977,11 +977,12 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
         files.push((PathBuf::from("LIBRARY").join("Frames").join(file), png));
     }
     let xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
         stage.width, stage.height, fps, stage.background.to_hex()
     );
     files.push((PathBuf::from("DOMDocument.xml"), xml.into_bytes()));
-    files.push((PathBuf::from("AniCraft.xfl"), b"PROXY-CS5".to_vec()));
+    let marker_name = path.file_stem().and_then(|name| name.to_str()).filter(|name| !name.is_empty()).unwrap_or("AniCraft");
+    files.push((PathBuf::from(format!("{marker_name}.xfl")), b"PROXY-CS5".to_vec()));
     files.push((PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()));
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
     crate::vfs::write(&path, &bytes)?;
