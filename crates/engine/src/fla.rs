@@ -4,7 +4,8 @@
 //! Unsupported document features are rejected rather than silently flattened or discarded.
 
 use crate::{EngineError, Result};
-use anicraft_doc::{Document, ElementKind, LayerKind, Paint, PathCmd};
+use anicraft_doc::{Document, ElementKind, LayerKind, Paint};
+use anicraft_geom::PathCmd;
 use anicraft_geom::Path;
 use std::path::{Path as FsPath, PathBuf};
 
