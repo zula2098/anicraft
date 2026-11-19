@@ -578,7 +578,7 @@ mod tests {
         let mut stroke = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0);
         stroke.style.miter_limit = f32::NAN;
         shape.stroke = Some(stroke);
-        assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY)
+        assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY, &std::collections::HashMap::new())
             .expect_err("non-finite miter limits must be rejected")
             .to_string().contains("miter limit"));
     }
