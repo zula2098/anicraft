@@ -1063,6 +1063,37 @@ fn android_start_picker(title: &str, default_name: &str, open: bool) -> Option<F
 }
 
 #[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+fn android_start_folder_picker(title: &str) -> Option<FileAnswer> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let pending = ANDROID_PICKER.get_or_init(|| std::sync::Mutex::new(None));
+    *pending.lock().ok()? = Some(tx);
+    let launched = (|| -> Result<(), String> {
+        let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
+        let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
+        if vm_ptr.is_null() || activity_ptr.is_null() {
+            return Err("Android Activity is not available".into());
+        }
+        let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }.map_err(|e| e.to_string())?;
+        let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
+        let activity = unsafe { jni::objects::JObject::from_raw(activity_ptr.cast()) };
+        let title = env.new_string(title).map_err(|e| e.to_string())?;
+        env.call_method(
+            &activity,
+            "openExportFolder",
+            "(Ljava/lang/String;)V",
+            &[jni::objects::JValue::Object(&title)],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if launched.is_err() {
+        if let Ok(mut slot) = pending.lock() { slot.take(); }
+        return None;
+    }
+    Some(rx)
+}
+
+#[cfg(target_os = "android")]
 pub fn start_file_dialog(
     cmd: &str,
     title: &str,
@@ -1070,9 +1101,13 @@ pub fn start_file_dialog(
     _window: &eframe::Frame,
     _ui: eframe::egui::Context,
 ) -> Option<FileAnswer> {
-    // Open/import commands read a picked document; Save As and every single-file export
-    // create a destination through ACTION_CREATE_DOCUMENT.
-    android_start_picker(title, default_name, reads_file(cmd))
+    if cmd == "file.export_png_sequence" {
+        android_start_folder_picker(title)
+    } else {
+        // Open/import commands read a picked document; Save As and single-file exports
+        // create a destination through ACTION_CREATE_DOCUMENT.
+        android_start_picker(title, default_name, reads_file(cmd))
+    }
 }
 
 /// Called by MainActivity after copying the selected content URI into the app cache.
@@ -1128,6 +1163,27 @@ pub fn start_save_dialog(
 
 /// Flush a file written to the private staging area back to its Android SAF destination.
 /// Files not created through the picker are left alone.
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+pub fn commit_android_folder(path: &Path) -> Result<(), String> {
+    let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
+    let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
+    if vm_ptr.is_null() || activity_ptr.is_null() {
+        return Err("Android Activity is not available".into());
+    }
+    let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }.map_err(|e| e.to_string())?;
+    let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
+    let activity = unsafe { jni::objects::JObject::from_raw(activity_ptr.cast()) };
+    let path = env.new_string(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
+    let copied = env.call_method(
+        &activity,
+        "commitFolder",
+        "(Ljava/lang/String;)Z",
+        &[jni::objects::JValue::Object(&path)],
+    ).map_err(|e| e.to_string())?.z().map_err(|e| e.to_string())?;
+    if copied { Ok(()) } else { Err("Android could not copy the exported files to the selected folder.".into()) }
+}
+
 #[cfg(target_os = "android")]
 #[allow(unsafe_code)]
 pub fn commit_android_file(path: &Path) -> Result<(), String> {
