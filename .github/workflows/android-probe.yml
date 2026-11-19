@@ -56,7 +56,7 @@ jobs:
         run: cargo install cargo-ndk --locked
 
       - name: Build GameActivity backend for ARM64
-        run: cargo ndk -t arm64-v8a build --release --manifest-path Cargo.toml --lib --no-default-features --features android,sound-output
+        run: cargo ndk -t arm64-v8a -P 26 build --release --manifest-path Cargo.toml --lib --no-default-features --features android,sound-output
 
       - name: Upload native library
         uses: actions/upload-artifact@v4
