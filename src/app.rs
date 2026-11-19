@@ -967,6 +967,20 @@ impl App {
 
     pub fn run(&mut self, id: &str, params: Value) -> Option<Value> {
         let result = self.s.execute(id, &params);
+        #[cfg(target_os = "android")]
+        if result.is_ok() && id.starts_with("file.") && id != "file.publish" {
+            // SAF creates a document URI, while the existing engine writes to ordinary paths.
+            // The picker supplies a private staging path; copy the finished output back to the
+            // provider only after the command has successfully closed its file.
+            let target = params.get("path").and_then(Value::as_str).map(str::to_string)
+                .or_else(|| (id == "file.save").then(|| self.s.path.as_ref().map(|p| p.display().to_string())).flatten());
+            if let Some(path) = target {
+                if let Err(error) = platform::commit_android_file(std::path::Path::new(&path)) {
+                    self.status_err(crate::i18n::t_dyn(&error).into_owned());
+                    return None;
+                }
+            }
+        }
         if platform::WEB && id.starts_with("file.") {
             // In a browser, what a save or an export wrote is in memory: hand it to the
             // browser as downloads (ADR 0036).
