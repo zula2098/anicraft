@@ -83,7 +83,7 @@ public final class MainActivity extends GameActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_OPEN_DOCUMENT) {
+        if (requestCode != REQUEST_OPEN_DOCUMENT && requestCode != REQUEST_CREATE_DOCUMENT) {
             return;
         }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
