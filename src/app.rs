@@ -3897,7 +3897,7 @@ impl App {
         // for itself (press, move to the next control) but the other shortcuts still work. A
         // text field keeps every key.
         let keys = crate::a11y::keyboard(ctx);
-        if keys == crate::a11y::Keyboard::Text || ctx.egui_wants_keyboard_input() || self.palette.is_some() {
+        if keys == crate::a11y::Keyboard::Text || self.palette.is_some() {
             return;
         }
         // The Test Movie window's movie has the keyboard (ADR 0052): its keys are the
