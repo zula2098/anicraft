@@ -116,7 +116,7 @@ fn transform_xml(transform: anicraft_geom::Affine) -> Result<String> {
     Ok(format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", n(a), n(b), n(c), n(d), n(tx), n(ty)))
 }
 
-fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> Result<String> {
+fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitmap_names: &std::collections::HashMap<anicraft_doc::BitmapId, String>) -> Result<String> {
     let mut fill = String::new();
     let mut stroke = String::new();
     let mut fill_index = 0;
@@ -125,12 +125,26 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
         return Err(EngineError::Format("native FLA export does not yet support even-odd fills, merged shapes, or warped artwork".into()));
     }
     if let Some(paint) = &shape.fill {
-        let Paint::Solid(color) = paint else {
-            return Err(EngineError::Format("native FLA export currently supports solid shape fills only; gradients and bitmap fills are not yet supported".into()));
-        };
         fill_index = 1;
-        let c = color.sanitized();
-        fill = format!("<fills><FillStyle index=\"1\"><SolidColor color=\"{}\" alpha=\"{}\"/></FillStyle></fills>", c.to_hex(), n(c.a));
+        let definition = match paint {
+            Paint::Solid(color) => {
+                let c = color.sanitized();
+                format!("<SolidColor color=\"{}\" alpha=\"{}\"/>", c.to_hex(), n(c.a))
+            }
+            Paint::Bitmap { bitmap, repeat, matrix } => {
+                let name = bitmap_names.get(bitmap).ok_or_else(|| EngineError::Format(format!("shape references missing bitmap {}", bitmap.0)))?;
+                if !matrix.is_finite() {
+                    return Err(EngineError::Format("bitmap fill transform is not finite".into()));
+                }
+                let [a,b,c,d,tx,ty] = matrix.m;
+                let clipped = if *repeat { "false" } else { "true" };
+                format!("<BitmapFill bitmapPath=\"{}\" bitmapIsClipped=\"{}\"><matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix></BitmapFill>", xml(name), clipped, n(a * TWIPS), n(b * TWIPS), n(c * TWIPS), n(d * TWIPS), n(tx * TWIPS), n(ty * TWIPS))
+            }
+            Paint::Linear { .. } | Paint::Radial { .. } => {
+                return Err(EngineError::Format("native FLA export does not yet support gradient fills".into()));
+            }
+        };
+        fill = format!("<fills><FillStyle index=\"1\">{definition}</FillStyle></fills>");
     }
     if let Some(line) = &shape.stroke {
         if line.profile.is_some() || line.style.dash.is_some() {
@@ -274,7 +288,7 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         if *total_shapes > MAX_VECTOR_SHAPES {
                             return Err(EngineError::Format("native FLA export exceeds the 100,000-shape safety limit".into()));
                         }
-                        let shape = shape_xml(shape, element.transform)?;
+                        let shape = shape_xml(shape, element.transform, bitmap_names)?;
                         push_bounded(&mut elements, &shape)?;
                     }
                     ElementKind::Symbol { symbol, loop_mode, first_frame, .. } => {
@@ -295,7 +309,13 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         let instance = format!("<DOMSymbolInstance libraryItemName=\"{}\"{symbol_type} loop=\"{loop_value}\" firstFrame=\"{}\"{label}>{matrix}</DOMSymbolInstance>", xml(name), first_frame);
                         push_bounded(&mut elements, &instance)?;
                     }
-                    ElementKind::Shape(_) => unreachable!(),
+                    ElementKind::Shape(shape) if matches!(shape.fill, Some(Paint::Bitmap { .. })) => {
+                        let bitmap = match &shape.fill { Some(Paint::Bitmap { bitmap, .. }) => *bitmap, _ => return Err(EngineError::Format("bitmap fill is missing".into())) };
+                        let name = bitmap_names.get(&bitmap).ok_or_else(|| EngineError::Format(format!("bitmap instance '{}' references missing bitmap {}", element.name, bitmap.0)))?;
+                        let matrix = transform_xml(element.transform)?;
+                        let instance = format!("<DOMBitmapInstance libraryItemName=\"{}\">{matrix}</DOMBitmapInstance>", xml(name));
+                        push_bounded(&mut elements, &instance)?;
+                    }
                     _ => {
                         return Err(EngineError::Format(format!("native FLA export does not yet support element '{}' of type {:?}", element.name, element.kind)));
                     }
