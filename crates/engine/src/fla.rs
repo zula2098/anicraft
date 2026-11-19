@@ -23,15 +23,20 @@ fn n(v: f32) -> String {
     if v == 0.0 { "0".into() } else { format!("{v:.4}") }
 }
 
-fn point(v: anicraft_geom::Vec2) -> String {
-    format!("{} {}", n(v.x * TWIPS), n(v.y * TWIPS))
+fn point(v: anicraft_geom::Vec2) -> Result<String> {
+    let x = v.x * TWIPS;
+    let y = v.y * TWIPS;
+    if !(x.is_finite() && y.is_finite()) {
+        return Err(EngineError::Format("vector coordinates exceed the finite XFL range".into()));
+    }
+    Ok(format!("{} {}", n(x), n(y)))
 }
 
 fn edge_data(path: &Path) -> Result<String> {
     let mut out = String::new();
     let mut current = None;
     let mut start = None;
-    let mut cubic_segments = 0usize;
+    let mut emitted_edges = 0usize;
     for (command_index, cmd) in path.cmds.iter().enumerate() {
         if command_index >= MAX_VECTOR_PATH_COMMANDS {
             return Err(EngineError::Format("vector path exceeds the 100,000-command safety limit".into()));
@@ -40,56 +45,59 @@ fn edge_data(path: &Path) -> Result<String> {
             PathCmd::MoveTo(p) => {
                 if !p.is_finite() { return Err(EngineError::Format("vector path contains a non-finite point".into())); }
                 out.push('!');
-                out.push_str(&point(p));
+                out.push_str(&point(p)?);
                 current = Some(p);
                 start = Some(p);
             }
             PathCmd::LineTo(p) => {
                 if !p.is_finite() { return Err(EngineError::Format("vector path contains a non-finite point".into())); }
+                if emitted_edges >= MAX_VECTOR_PATH_COMMANDS { return Err(EngineError::Format("vector path exceeds the 100,000-edge safety limit".into())); }
                 out.push('|');
-                out.push_str(&point(p));
+                out.push_str(&point(p)?);
+                emitted_edges += 1;
                 current = Some(p);
             }
             PathCmd::QuadTo(c, p) => {
                 if !(c.is_finite() && p.is_finite()) { return Err(EngineError::Format("vector path contains a non-finite point".into())); }
+                if emitted_edges >= MAX_VECTOR_PATH_COMMANDS { return Err(EngineError::Format("vector path exceeds the 100,000-edge safety limit".into())); }
                 out.push(']');
-                out.push_str(&point(c));
+                out.push_str(&point(c)?);
                 out.push(' ');
-                out.push_str(&point(p));
+                out.push_str(&point(p)?);
+                emitted_edges += 1;
                 current = Some(p);
             }
             PathCmd::CubicTo(a, b, p) => {
                 let Some(from) = current else { return Err(EngineError::Format("vector path has a curve before its first move".into())); };
                 if !(a.is_finite() && b.is_finite() && p.is_finite()) { return Err(EngineError::Format("vector path contains a non-finite point".into())); }
-                // XFL's edge wire format uses quadratic segments. Approximate a cubic by short
-                // editable line segments, rather than rasterizing the curve.
                 const STEPS: usize = 12;
-                if cubic_segments.saturating_add(STEPS) > MAX_VECTOR_PATH_COMMANDS {
-                    return Err(EngineError::Format("vector path is too complex for FLA export".into()));
+                if emitted_edges.saturating_add(STEPS) > MAX_VECTOR_PATH_COMMANDS {
+                    return Err(EngineError::Format("vector path exceeds the 100,000-edge safety limit after cubic conversion".into()));
                 }
                 for i in 1..=STEPS {
                     let t = i as f32 / STEPS as f32;
                     let u = 1.0 - t;
                     let q = from * (u*u*u) + a * (3.0*u*u*t) + b * (3.0*u*t*t) + p * (t*t*t);
                     out.push('|');
-                    out.push_str(&point(q));
+                    out.push_str(&point(q)?);
                 }
-                cubic_segments += STEPS;
+                emitted_edges += STEPS;
                 current = Some(p);
             }
             PathCmd::Close => {
                 if let (Some(at), Some(first)) = (current, start) {
-                        if (at - first).length() > 0.0001 {
-                            out.push('|');
-                            out.push_str(&point(first));
-                        }
+                    if (at - first).length() > 0.0001 {
+                        if emitted_edges >= MAX_VECTOR_PATH_COMMANDS { return Err(EngineError::Format("vector path exceeds the 100,000-edge safety limit".into())); }
+                        out.push('|');
+                        out.push_str(&point(first)?);
+                        emitted_edges += 1;
+                    }
                 }
                 current = start;
             }
         }
     }
     if out.is_empty() { return Err(EngineError::Format("empty vector path".into())); }
-    if cubic_segments > MAX_VECTOR_PATH_COMMANDS { return Err(EngineError::Format("vector path is too complex for FLA export".into())); }
     Ok(out)
 }
 
