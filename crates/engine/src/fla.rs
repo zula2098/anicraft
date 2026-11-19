@@ -12,6 +12,8 @@ use std::path::{Path as FsPath, PathBuf};
 const TWIPS: f32 = 20.0;
 const MAX_VECTOR_FRAMES: u32 = 10_000;
 const MAX_VECTOR_SHAPES: usize = 100_000;
+const MAX_VECTOR_PATH_COMMANDS: usize = 100_000;
+const MAX_VECTOR_XML_BYTES: usize = 64 * 1024 * 1024;
 
 fn xml(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
@@ -30,7 +32,10 @@ fn edge_data(path: &Path) -> Result<String> {
     let mut current = None;
     let mut start = None;
     let mut cubic_segments = 0usize;
-    for cmd in &path.cmds {
+    for (command_index, cmd) in path.cmds.iter().enumerate() {
+        if command_index >= MAX_VECTOR_PATH_COMMANDS {
+            return Err(EngineError::Format("vector path exceeds the 100,000-command safety limit".into()));
+        }
         match *cmd {
             PathCmd::MoveTo(p) => {
                 if !p.is_finite() { return Err(EngineError::Format("vector path contains a non-finite point".into())); }
@@ -59,6 +64,9 @@ fn edge_data(path: &Path) -> Result<String> {
                 // XFL's edge wire format uses quadratic segments. Approximate a cubic by short
                 // editable line segments, rather than rasterizing the curve.
                 const STEPS: usize = 12;
+                if cubic_segments.saturating_add(STEPS) > MAX_VECTOR_PATH_COMMANDS {
+                    return Err(EngineError::Format("vector path is too complex for FLA export".into()));
+                }
                 for i in 1..=STEPS {
                     let t = i as f32 / STEPS as f32;
                     let u = 1.0 - t;
@@ -81,7 +89,7 @@ fn edge_data(path: &Path) -> Result<String> {
         }
     }
     if out.is_empty() { return Err(EngineError::Format("empty vector path".into())); }
-    if cubic_segments > 100_000 { return Err(EngineError::Format("vector path is too complex for FLA export".into())); }
+    if cubic_segments > MAX_VECTOR_PATH_COMMANDS { return Err(EngineError::Format("vector path is too complex for FLA export".into())); }
     Ok(out)
 }
 
@@ -195,6 +203,9 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
         return Err(EngineError::Format("native FLA export does not yet support a translucent stage background".into()));
     }
     let xml_doc = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
+    if xml_doc.len() > MAX_VECTOR_XML_BYTES {
+        return Err(EngineError::Format("native FLA document XML exceeds the 64 MB safety limit".into()));
+    }
     let stem = path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()).unwrap_or("AniCraft");
     let files = vec![
         // XFL packages put the uncompressed mimetype entry first in the ZIP.
