@@ -149,6 +149,9 @@ rfd.workspace = true
 # Desktop clipboard access (not available on Android or in the browser).
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+winit = { version = "0.30", features = ["android-game-activity"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 fmv-macos-events = "=0.1.0"
 # Waits for the answer of a file dialog shown as a sheet (`platform::start_file_dialog`).
