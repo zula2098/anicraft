@@ -922,10 +922,22 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
 /// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved.
 /// The separate beta vector command exports the currently supported editable-shape subset.
 
+fn write_fla_package(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    if bytes.len() < 4 || !bytes.starts_with(b"PK\\x03\\x04") {
+        return Err(EngineError::Format("FLA exporter produced an invalid or empty ZIP package".into()));
+    }
+    crate::vfs::write(path, bytes)?;
+    let written = crate::vfs::len(path)?;
+    if written != bytes.len() as u64 || written == 0 {
+        return Err(EngineError::Format(format!("FLA package write was incomplete ({} of {} bytes)", written, bytes.len())));
+    }
+    Ok(())
+}
+
 fn export_fla_vector(s: &mut Session, p: &Value) -> Result<Value> {
     let path = PathBuf::from(str_req(p, "path")?);
     let (bytes, frames, shapes) = crate::fla::export(&s.doc, &path)?;
-    crate::vfs::write(&path, &bytes)?;
+    write_fla_package(&path, &bytes)?;
     Ok(json!({
         "written": path.display().to_string(),
         "frames": frames,
@@ -1009,7 +1021,7 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     files.push((PathBuf::from(format!("{marker_name}.xfl")), b"PROXY-CS5".to_vec()));
     files.push((PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()));
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
-    crate::vfs::write(&path, &bytes)?;
+    write_fla_package(&path, &bytes)?;
     Ok(json!({
         "written": path.display().to_string(),
         "frames": count,
