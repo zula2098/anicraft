@@ -133,6 +133,13 @@ pub fn publish_now(app: &mut App) {
     }
 }
 
+#[cfg(target_os = "android")]
+fn begin(app: &mut App, params: &Value, threaded: bool) {
+    let _ = (params, threaded);
+    app.status_err(tr!("On Android, use File › Export to save an output at a time. Multi-format Publish to a folder is not available yet."));
+}
+
+#[cfg(not(target_os = "android"))]
 fn begin(app: &mut App, params: &Value, threaded: bool) {
     // Publish can write several independent files into a directory beside the project.
     // Android's SAF export flow currently handles one file or an explicitly picked frame
@@ -179,7 +186,6 @@ fn begin(app: &mut App, params: &Value, threaded: bool) {
     app.publish.report = None;
     app.publish.job = Some(Job { control, formats, running: None, done: Vec::new(), runner, name });
 }
-
 /// The worker thread, on the desktop; `None` where there are no threads (or none started).
 fn spawn(doc: anicraft_engine::doc::Document, path: Option<std::path::PathBuf>, steps: Vec<publish::Step>, control: Arc<Control>) -> Option<Runner> {
     if crate::platform::WEB {
