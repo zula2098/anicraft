@@ -169,7 +169,7 @@ public final class MainActivity extends GameActivity {
                 if (!folder.mkdirs()) throw new IOException("Could not create the export staging folder");
                 try {
                     getContentResolver().takePersistableUriPermission(uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                        data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
                 } catch (SecurityException ignored) {
                     // Some providers do not offer persistable grants.
                 }
