@@ -415,7 +415,6 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     }
     let mut symbols_xml = String::new();
     let mut symbol_files = Vec::with_capacity(doc.library.len());
-    let mut symbol_id = 1u64;
     for symbol in &doc.library {
         let name = symbol_names.get(&symbol.id).ok_or_else(|| EngineError::Format("symbol name was not indexed".into()))?;
         let layers = timeline_xml(&symbol.timeline, doc, &mut shapes, &symbol_names, &bitmap_names)?;
@@ -432,8 +431,7 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
             }
         }
         let scale_grid = symbol.scale_grid.map(|g| format!(" scaleGridLeft=\"{}\" scaleGridRight=\"{}\" scaleGridTop=\"{}\" scaleGridBottom=\"{}\"", n(g.left * TWIPS), n(g.right * TWIPS), n(g.top * TWIPS), n(g.bottom * TWIPS))).unwrap_or_default();
-        let item_id = format!("00000000-0000-0000-0000-{:012}", symbol_id);
-        symbol_id += 1;
+        let item_id = format!("00000000-0000-0000-0000-{:012}", symbol.id.0 % 1_000_000_000_000);
         let item = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMSymbolItem xmlns=\"http://ns.adobe.com/xfl/2008/\" name=\"{}\" itemID=\"{}\"{symbol_type}{attrs}{scale_grid}><timeline><DOMTimeline name=\"{}\">{layers}</DOMTimeline></timeline></DOMSymbolItem>", xml(name), item_id, xml(&symbol.name));
         if item.len() > MAX_VECTOR_XML_BYTES {
             return Err(EngineError::Format(format!("symbol '{}' XML exceeds the 64 MB safety limit", symbol.name)));
@@ -444,14 +442,12 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     }
     let mut bitmap_media = String::new();
     let mut bitmap_files = Vec::with_capacity(doc.bitmaps.len());
-    let mut bitmap_id = 1u64;
     for bitmap in &doc.bitmaps {
         if bitmap.png.is_empty() {
             return Err(EngineError::Format(format!("bitmap '{}' has no PNG data", bitmap.name)));
         }
         let name = bitmap_names.get(&bitmap.id).ok_or_else(|| EngineError::Format("bitmap name was not indexed".into()))?;
-        let id = format!("00000000-0000-0000-0000-{:012}", bitmap_id);
-        bitmap_id += 1;
+        let id = format!("00000000-0000-0000-0000-{:012}", bitmap.id.0 % 1_000_000_000_000);
         let smoothing = if bitmap.smoothing { "true" } else { "false" };
         push_bounded(&mut bitmap_media, &format!("<DOMBitmapItem name=\"{}\" itemID=\"{}\" sourceExternalFilepath=\"./LIBRARY/{}\" href=\"{}\" allowSmoothing=\"{}\"/>", xml(name), id, xml(name), xml(name), smoothing))?;
         bitmap_files.push((PathBuf::from("LIBRARY").join(name), bitmap.png.as_ref().clone()));
