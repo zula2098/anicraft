@@ -134,6 +134,15 @@ pub fn publish_now(app: &mut App) {
 }
 
 fn begin(app: &mut App, params: &Value, threaded: bool) {
+    // Publish can write several independent files into a directory beside the project.
+    // Android's SAF export flow currently handles one file or an explicitly picked frame
+    // sequence folder; do not silently leave a multi-format publish in private app storage.
+    #[cfg(target_os = "android")]
+    {
+        let _ = (params, threaded);
+        app.status_err(tr!("On Android, use File › Export to save an output at a time. Multi-format Publish to a folder is not available yet."));
+        return;
+    }
     if app.publish.job.is_some() {
         app.status_err(tr!("Publishing is already running"));
         return;
