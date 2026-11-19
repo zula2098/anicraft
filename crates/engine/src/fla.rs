@@ -179,6 +179,11 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> 
         }
         let mut frames = String::from("<frames>");
         for key in &layer.keyframes {
+            let end_frame = key.start.checked_add(key.duration.max(1))
+                .ok_or_else(|| EngineError::Format("native FLA keyframe range overflows".into()))?;
+            if end_frame > MAX_VECTOR_FRAMES {
+                return Err(EngineError::Format(format!("native FLA export is limited to {MAX_VECTOR_FRAMES} frames per scene")));
+            }
             if key.tween.is_some() || key.motion.is_some() || !key.hints.is_empty() || key.sound.is_some() || key.script.is_some() || !key.pose.is_empty() {
                 return Err(EngineError::Format(format!("native FLA export does not yet support tweens, frame scripts, sounds, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
             }
@@ -275,6 +280,18 @@ mod tests {
         assert_eq!(xml, "1234", "failed append must not partially mutate the output");
         push_bounded_to(&mut xml, "5", 5).expect("append within budget should succeed");
         assert_eq!(xml, "12345");
+    }
+
+    #[test]
+    fn keyframe_ranges_beyond_fla_limit_are_rejected() {
+        let mut doc = Document::default();
+        let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
+        key.start = MAX_VECTOR_FRAMES;
+        key.duration = 2;
+        let error = export(&doc, FsPath::new("too-many-frames.fla"))
+            .expect_err("keyframe ranges beyond the export limit must be rejected");
+        assert!(error.to_string().contains("limited to 10,000 frames"));
     }
 
     #[test]
