@@ -141,6 +141,9 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> 
         }
         let mut frames = String::from("<frames>");
         for key in &layer.keyframes {
+            if key.tween.is_some() || key.motion.is_some() || !key.hints.is_empty() || key.sound.is_some() || key.script.is_some() || !key.pose.is_empty() {
+                return Err(EngineError::Format(format!("native FLA export does not yet support tweens, frame scripts, sounds, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
+            }
             let mut elements = String::from("<elements>");
             for element in &key.elements {
                 let ElementKind::Shape(shape) = &element.kind else {
@@ -172,6 +175,9 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> 
 pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usize)> {
     if path.extension().and_then(|e| e.to_str()).is_none_or(|e| !e.eq_ignore_ascii_case("fla")) {
         return Err(EngineError::Param("FLA export needs a .fla file name".into()));
+    }
+    if !doc.library.is_empty() || !doc.bitmaps.is_empty() || !doc.sounds.is_empty() || !doc.document_class.is_empty() {
+        return Err(EngineError::Format("native FLA export does not yet support library symbols, bitmaps, sounds, or document scripts".into()));
     }
     let frames = doc.frame_count();
     if frames > MAX_VECTOR_FRAMES {
