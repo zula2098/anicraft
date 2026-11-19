@@ -291,6 +291,21 @@ pub(crate) fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> R
     Ok((attrs, envelope))
 }
 
+fn color_effect_xml(effect: anicraft_doc::ColorEffect) -> String {
+    let body = match effect.sanitized() {
+        anicraft_doc::ColorEffect::None => return String::new(),
+        anicraft_doc::ColorEffect::Alpha(alpha) => format!("<Color alphaMultiplier=\"{}\"/>", n(alpha)),
+        anicraft_doc::ColorEffect::Brightness(brightness) => format!("<Color brightness=\"{}\"/>", n(brightness)),
+        anicraft_doc::ColorEffect::Tint { color, amount } => format!("<Color tintMultiplier=\"{}\" tintColor=\"{}\"/>", n(amount), color.to_hex()),
+        anicraft_doc::ColorEffect::Advanced(transform) => format!(
+            "<Color redMultiplier=\"{}\" greenMultiplier=\"{}\" blueMultiplier=\"{}\" alphaMultiplier=\"{}\" redOffset=\"{}\" greenOffset=\"{}\" blueOffset=\"{}\" alphaOffset=\"{}\"/>",
+            n(transform.mul[0]), n(transform.mul[1]), n(transform.mul[2]), n(transform.mul[3]),
+            n(transform.add[0] * 255.0), n(transform.add[1] * 255.0), n(transform.add[2] * 255.0), n(transform.add[3] * 255.0)
+        ),
+    };
+    format!("<color>{body}</color>")
+}
+
 fn frame_script_xml(script: Option<&anicraft_doc::FrameScript>) -> Result<String> {
     let Some(script) = script else { return Ok(String::new()) };
     match script {
@@ -345,11 +360,11 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             }
             let mut elements = String::from("<elements>");
             for element in &key.elements {
-                if element.color != anicraft_doc::ColorEffect::default() {
-                    return Err(EngineError::Format("native FLA export does not yet support element colour effects".into()));
-                }
                 match &element.kind {
                     ElementKind::Shape(shape) => {
+                        if element.color != anicraft_doc::ColorEffect::default() {
+                            return Err(EngineError::Format("native FLA export does not yet apply colour effects to shapes".into()));
+                        }
                         *total_shapes += 1;
                         if *total_shapes > MAX_VECTOR_SHAPES {
                             return Err(EngineError::Format("native FLA export exceeds the 100,000-shape safety limit".into()));
@@ -358,6 +373,9 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         push_bounded(&mut elements, &shape)?;
                     }
                     ElementKind::Text(text) => {
+                        if element.color != anicraft_doc::ColorEffect::default() {
+                            return Err(EngineError::Format("native FLA export does not yet apply colour effects to text outlines".into()));
+                        }
                         if text.field.is_some() || !text.filters.is_empty() {
                             return Err(EngineError::Format(format!("text element '{}' has a dynamic field or filters that cannot yet be represented as editable vector paths", element.name)));
                         }
@@ -381,7 +399,10 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                             push_bounded(&mut elements, &shape)?;
                         }
                     }
-                    ElementKind::Symbol { symbol, loop_mode, first_frame, .. } => {
+                    ElementKind::Symbol { symbol, loop_mode, first_frame, blend, filters, events, .. } => {
+                        if *blend != anicraft_doc::BlendMode::Normal || !filters.is_empty() || !events.is_empty() {
+                            return Err(EngineError::Format(format!("symbol instance '{}' has a blend mode, filter, or event that cannot yet be serialized", element.name)));
+                        }
                         let name = symbol_names.get(symbol).ok_or_else(|| EngineError::Format(format!("symbol instance '{}' references missing library item {}", element.name, symbol.0)))?;
                         let kind = doc.symbol(*symbol).map(|s| s.kind).ok_or_else(|| EngineError::Format(format!("symbol {} is missing", symbol.0)))?;
                         let symbol_type = match kind {
@@ -396,7 +417,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         };
                         let label = if element.name.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&element.name)) };
                         let matrix = transform_xml(element.transform)?;
-                        let instance = format!("<DOMSymbolInstance libraryItemName=\"{}\"{symbol_type} loop=\"{loop_value}\" firstFrame=\"{}\"{label}>{matrix}</DOMSymbolInstance>", xml(name), first_frame);
+                        let color = color_effect_xml(element.color);
+                        let instance = format!("<DOMSymbolInstance libraryItemName=\"{}\"{symbol_type} loop=\"{loop_value}\" firstFrame=\"{}\"{label}>{matrix}{color}</DOMSymbolInstance>", xml(name), first_frame);
                         push_bounded(&mut elements, &instance)?;
                     }
                     _ => {
