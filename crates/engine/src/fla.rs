@@ -722,14 +722,14 @@ mod tests {
         let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
         key.script = Some(anicraft_doc::FrameScript::Source(Arc::new(anicraft_doc::SourceScript::new(
             anicraft_doc::Language::ActionScript3,
-            "trace(\\\"hello\\\");",
+            r#"trace("hello");"#,
         ))));
         let (bytes, _, _) = export(&doc, FsPath::new("script-roundtrip.fla")).expect("script package should export");
         let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the script package");
         assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
         let script = opened.timeline(0).layers[0].keyframe_at(0).and_then(|key| key.script.as_ref()).expect("frame script should remain");
         let Some(source) = script.source() else { panic!("source script should remain source text"); };
-        assert_eq!(source.text, "trace(\\\"hello\\\");");
+        assert_eq!(source.text, r#"trace("hello");"#);
     }
 
     #[test]
