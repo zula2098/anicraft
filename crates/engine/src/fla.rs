@@ -104,6 +104,18 @@ fn edge_data(path: &Path) -> Result<String> {
     Ok(out)
 }
 
+
+fn transform_xml(transform: anicraft_geom::Affine) -> Result<String> {
+    if transform == anicraft_geom::Affine::IDENTITY {
+        return Ok(String::new());
+    }
+    if !transform.is_finite() {
+        return Err(EngineError::Format("element transform is not finite".into()));
+    }
+    let [a, b, c, d, tx, ty] = transform.m;
+    Ok(format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", n(a), n(b), n(c), n(d), n(tx), n(ty)))
+}
+
 fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> Result<String> {
     let mut fill = String::new();
     let mut stroke = String::new();
@@ -230,7 +242,7 @@ fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<(Stri
     Ok((attrs, envelope))
 }
 
-fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes: &mut usize) -> Result<String> {
+fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes: &mut usize, symbol_names: &std::collections::HashMap<anicraft_doc::SymbolId, String>, bitmap_names: &std::collections::HashMap<anicraft_doc::BitmapId, String>) -> Result<String> {
     let mut out = String::from("<layers>");
     // Both the document model and XFL store the frontmost layer first.
     for layer in &timeline.layers {
@@ -253,18 +265,41 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             }
             let mut elements = String::from("<elements>");
             for element in &key.elements {
-                let ElementKind::Shape(shape) = &element.kind else {
-                    return Err(EngineError::Format(format!("native FLA export currently supports vector shapes only; element '{}' is not a plain shape", element.name)));
-                };
                 if element.color != anicraft_doc::ColorEffect::default() {
                     return Err(EngineError::Format("native FLA export does not yet support element colour effects".into()));
                 }
-                *total_shapes += 1;
-                if *total_shapes > MAX_VECTOR_SHAPES {
-                    return Err(EngineError::Format("native FLA export exceeds the 100,000-shape safety limit".into()));
+                match &element.kind {
+                    ElementKind::Shape(shape) => {
+                        *total_shapes += 1;
+                        if *total_shapes > MAX_VECTOR_SHAPES {
+                            return Err(EngineError::Format("native FLA export exceeds the 100,000-shape safety limit".into()));
+                        }
+                        let shape = shape_xml(shape, element.transform)?;
+                        push_bounded(&mut elements, &shape)?;
+                    }
+                    ElementKind::Symbol { symbol, loop_mode, first_frame, .. } => {
+                        let name = symbol_names.get(symbol).ok_or_else(|| EngineError::Format(format!("symbol instance '{}' references missing library item {}", element.name, symbol.0)))?;
+                        let kind = doc.symbol(*symbol).map(|s| s.kind).ok_or_else(|| EngineError::Format(format!("symbol {} is missing", symbol.0)))?;
+                        let symbol_type = match kind {
+                            anicraft_doc::SymbolKind::Graphic => " symbolType=\"graphic\"",
+                            anicraft_doc::SymbolKind::MovieClip => "",
+                            anicraft_doc::SymbolKind::Button => " symbolType=\"button\"",
+                        };
+                        let loop_value = match loop_mode {
+                            anicraft_doc::LoopMode::Loop => "loop",
+                            anicraft_doc::LoopMode::PlayOnce => "play once",
+                            anicraft_doc::LoopMode::SingleFrame => "single frame",
+                        };
+                        let label = if element.name.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&element.name)) };
+                        let matrix = transform_xml(element.transform)?;
+                        let instance = format!("<DOMSymbolInstance libraryItemName=\"{}\"{symbol_type} loop=\"{loop_value}\" firstFrame=\"{}\"{label}>{matrix}</DOMSymbolInstance>", xml(name), first_frame);
+                        push_bounded(&mut elements, &instance)?;
+                    }
+                    ElementKind::Shape(_) => unreachable!(),
+                    _ => {
+                        return Err(EngineError::Format(format!("native FLA export does not yet support element '{}' of type {:?}", element.name, element.kind)));
+                    }
                 }
-                let shape = shape_xml(shape, element.transform)?;
-                push_bounded(&mut elements, &shape)?;
             }
             push_bounded(&mut elements, "</elements>")?;
             let label = if key.label.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&key.label)) };
@@ -287,8 +322,8 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     if path.extension().and_then(|e| e.to_str()).is_none_or(|e| !e.eq_ignore_ascii_case("fla")) {
         return Err(EngineError::Param("FLA export needs a .fla file name".into()));
     }
-    if !doc.library.is_empty() || !doc.bitmaps.is_empty() || !doc.document_class.is_empty() {
-        return Err(EngineError::Format("native FLA export does not yet support library symbols, bitmaps, or document scripts".into()));
+    if !doc.document_class.is_empty() {
+        return Err(EngineError::Format("native FLA export does not yet support document class scripts".into()));
     }
     let stage = doc.stage;
     if stage.width == 0 || stage.height == 0
@@ -304,10 +339,68 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     if frames > MAX_VECTOR_FRAMES {
         return Err(EngineError::Param(format!("native FLA export is limited to {MAX_VECTOR_FRAMES} frames")));
     }
-    let mut shapes = 0usize;
+    let mut symbol_names = std::collections::HashMap::new();
+    for symbol in &doc.library {
+        let name = doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Symbol(symbol.id)));
+        if name.is_empty() || name.contains('\\\\') {
+            return Err(EngineError::Format(format!("symbol '{}' has an invalid library path", symbol.name)));
+        }
+        symbol_names.insert(symbol.id, name);
+    }
+    let mut bitmap_names = std::collections::HashMap::new();
+    for bitmap in &doc.bitmaps {
+        let name = doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Bitmap(bitmap.id)));
+        if name.is_empty() || name.contains('\\\\') {
+            return Err(EngineError::Format(format!("bitmap '{}' has an invalid library path", bitmap.name)));
+        }
+        bitmap_names.insert(bitmap.id, name);
+    }
+    let mut symbols_xml = String::new();
+    let mut symbol_files = Vec::with_capacity(doc.library.len());
+    let mut symbol_id = 1u64;
+    for symbol in &doc.library {
+        let name = symbol_names.get(&symbol.id).ok_or_else(|| EngineError::Format("symbol name was not indexed".into()))?;
+        let layers = timeline_xml(&symbol.timeline, doc, &mut shapes, &symbol_names, &bitmap_names)?;
+        let symbol_type = match symbol.kind {
+            anicraft_doc::SymbolKind::Graphic => " symbolType=\"graphic\"",
+            anicraft_doc::SymbolKind::MovieClip => "",
+            anicraft_doc::SymbolKind::Button => " symbolType=\"button\"",
+        };
+        let mut attrs = String::new();
+        if let Some(linkage) = &symbol.linkage {
+            attrs.push_str(&format!(" linkageExportForAS=\"true\" linkageClassName=\"{}\"", xml(&linkage.class)));
+            if !linkage.base.is_empty() {
+                attrs.push_str(&format!(" linkageBaseClass=\"{}\"", xml(&linkage.base)));
+            }
+        }
+        let scale_grid = symbol.scale_grid.map(|g| format!(" scaleGridLeft=\"{}\" scaleGridRight=\"{}\" scaleGridTop=\"{}\" scaleGridBottom=\"{}\"", n(g.left * TWIPS), n(g.right * TWIPS), n(g.top * TWIPS), n(g.bottom * TWIPS))).unwrap_or_default();
+        let item_id = format!("00000000-0000-0000-0000-{:012}", symbol_id);
+        symbol_id += 1;
+        let item = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMSymbolItem xmlns=\"http://ns.adobe.com/xfl/2008/\" name=\"{}\" itemID=\"{}\"{symbol_type}{attrs}{scale_grid}><timeline><DOMTimeline name=\"{}\">{layers}</DOMTimeline></timeline></DOMSymbolItem>", xml(name), item_id, xml(&symbol.name));
+        if item.len() > MAX_VECTOR_XML_BYTES {
+            return Err(EngineError::Format(format!("symbol '{}' XML exceeds the 64 MB safety limit", symbol.name)));
+        }
+        let href = format!("{name}.xml");
+        push_bounded(&mut symbols_xml, &format!("<Include href=\"{}\"/>", xml(&href)))?;
+        symbol_files.push((PathBuf::from("LIBRARY").join(&href), item.into_bytes()));
+    }
+    let mut bitmap_media = String::new();
+    let mut bitmap_files = Vec::with_capacity(doc.bitmaps.len());
+    let mut bitmap_id = 1u64;
+    for bitmap in &doc.bitmaps {
+        if bitmap.png.is_empty() {
+            return Err(EngineError::Format(format!("bitmap '{}' has no PNG data", bitmap.name)));
+        }
+        let name = bitmap_names.get(&bitmap.id).ok_or_else(|| EngineError::Format("bitmap name was not indexed".into()))?;
+        let id = format!("00000000-0000-0000-0000-{:012}", bitmap_id);
+        bitmap_id += 1;
+        let smoothing = if bitmap.smoothing { "true" } else { "false" };
+        push_bounded(&mut bitmap_media, &format!("<DOMBitmapItem name=\"{}\" itemID=\"{}\" sourceExternalFilepath=\"./LIBRARY/{}\" href=\"{}\" allowSmoothing=\"{}\"/>", xml(name), id, xml(name), xml(name), smoothing))?;
+        bitmap_files.push((PathBuf::from("LIBRARY").join(name), bitmap.png.as_ref().clone()));
+    }
     let mut timelines = String::from("<timelines>");
     for scene in &doc.scenes {
-        let layers = timeline_xml(&scene.timeline, doc, &mut shapes)?;
+        let layers = timeline_xml(&scene.timeline, doc, &mut shapes, &symbol_names, &bitmap_names)?;
         let timeline = format!("<DOMTimeline name=\"{}\">{layers}</DOMTimeline>", xml(&scene.name));
         push_bounded(&mut timelines, &timeline)?;
     }
@@ -316,7 +409,9 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
         return Err(EngineError::Format("native FLA export does not yet support a translucent stage background".into()));
     }
     let (media, mut sound_files) = sound_media_xml(doc)?;
-    let xml_doc = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
+    let mut media_xml = bitmap_media;
+    push_bounded(&mut media_xml, &media)?;
+    let xml_doc = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media_xml}</media><symbols>{symbols_xml}</symbols>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
     if xml_doc.len() > MAX_VECTOR_XML_BYTES {
         return Err(EngineError::Format("native FLA document XML exceeds the 64 MB safety limit".into()));
     }
@@ -327,6 +422,8 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
         (PathBuf::from("DOMDocument.xml"), xml_doc.into_bytes()),
         (PathBuf::from(format!("{stem}.xfl")), b"PROXY-CS5".to_vec()),
     ];
+    files.append(&mut bitmap_files);
+    files.append(&mut symbol_files);
     files.append(&mut sound_files);
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
     Ok((bytes, frames, shapes))
@@ -357,7 +454,7 @@ mod tests {
         key.start = MAX_VECTOR_FRAMES;
         key.duration = 2;
         let mut shapes = 0;
-        let error = timeline_xml(&doc.scenes[0].timeline, &doc, &mut shapes)
+        let error = timeline_xml(&doc.scenes[0].timeline, &doc, &mut shapes, &std::collections::HashMap::new(), &std::collections::HashMap::new())
             .expect_err("keyframe ranges beyond the export limit must be rejected");
         assert!(error.to_string().contains("limited to 10,000 frames"));
     }
