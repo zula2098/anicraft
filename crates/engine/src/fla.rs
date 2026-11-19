@@ -228,7 +228,7 @@ fn sound_library_name(doc: &Document, sound: &anicraft_doc::Sound) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> {
+pub(crate) fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> {
     let mut media = String::new();
     let mut files = Vec::with_capacity(doc.sounds.len());
     for sound in &doc.sounds {
@@ -249,7 +249,7 @@ fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> 
     Ok((media, files))
 }
 
-fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<(String, String)> {
+pub(crate) fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<(String, String)> {
     let Some(frame_sound) = &key.sound else { return Ok((String::new(), String::new())) };
     let sound = doc.sound(frame_sound.sound).ok_or_else(|| {
         EngineError::Format(format!("keyframe references missing sound {}", frame_sound.sound.0))
