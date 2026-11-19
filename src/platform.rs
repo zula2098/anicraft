@@ -1016,6 +1016,7 @@ pub fn file_dialog(_cmd: &str, _title: &str, _default_name: &str) -> Option<Path
 }
 
 #[cfg(target_os = "android")]
+#[allow(unsafe_code)]
 pub fn start_file_dialog(
     cmd: &str,
     title: &str,
@@ -1033,7 +1034,6 @@ pub fn start_file_dialog(
 
     // android-activity initializes ndk-context before android_main. The context is the
     // GameActivity instance in this application, so this call opens the native SAF UI.
-    #[allow(unsafe_code)]
     let launched = (|| -> Result<(), String> {
         let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
         let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
