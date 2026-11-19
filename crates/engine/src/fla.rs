@@ -90,6 +90,9 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
     let mut stroke = String::new();
     let mut fill_index = 0;
     let mut stroke_index = 0;
+    if shape.fill_rule != anicraft_geom::FillRule::NonZero || shape.merge || shape.warp.is_some() {
+        return Err(EngineError::Format("native FLA export does not yet support even-odd fills, merged shapes, or warped artwork".into()));
+    }
     if let Some(paint) = &shape.fill {
         let Paint::Solid(color) = paint else {
             return Err(EngineError::Format("native FLA export currently supports solid shape fills only; gradients and bitmap fills are not yet supported".into()));
@@ -127,11 +130,14 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
 
 fn timeline_xml(doc: &Document, timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> Result<String> {
     let mut out = String::from("<layers>");
-    // XFL stores the frontmost layer first; AniCraft's timeline is back-to-front.
-    for layer in timeline.layers.iter().rev() {
+    // Both the document model and XFL store the frontmost layer first.
+    for layer in &timeline.layers {
         if layer.kind == LayerKind::Folder { continue; }
         if layer.kind != LayerKind::Normal {
             return Err(EngineError::Format(format!("native FLA export does not yet support {:?} layers", layer.kind)));
+        }
+        if layer.parent.is_some() || layer.opacity != 1.0 || layer.depth != 0.0 || layer.attached || !layer.depth_keys.is_empty() {
+            return Err(EngineError::Format(format!("native FLA export does not yet support parented, translucent, or depth-managed layer '{}'", layer.name)));
         }
         let mut frames = String::from("<frames>");
         for key in &layer.keyframes {
@@ -180,6 +186,9 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     }
     timelines.push_str("</timelines>");
     let stage = doc.stage;
+    if stage.background.a != 1.0 {
+        return Err(EngineError::Format("native FLA export does not yet support a translucent stage background".into()));
+    }
     let xml_doc = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
     let stem = path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()).unwrap_or("AniCraft");
     let files = vec![
