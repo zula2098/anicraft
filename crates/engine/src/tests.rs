@@ -197,7 +197,7 @@ fn editable_fla_export_round_trips_a_solid_vector_shape() {
     assert_eq!(result["editable"], true);
     assert_eq!(result["shapes"], 1);
     let bytes = std::fs::read(&path).unwrap();
-    assert!(bytes.starts_with(b"PK\\x03\\x04"));
+    assert!(bytes.starts_with(b"PK\x03\x04"));
     let (imported, report) = anicraft_xfl::import_fla(&bytes).unwrap();
     assert_eq!(imported.stage.width, s.doc.stage.width);
     assert_eq!(imported.timeline(0).layers.len(), 1);
