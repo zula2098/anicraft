@@ -3577,6 +3577,7 @@ impl App {
             "file.export_webp" => Some((tr_noop!("Export animated WebP (lossless, transparent)"), "path", "animation.webp".to_string())),
             "file.export_svg" => Some((tr_noop!("Export frame as SVG"), "path", format!("frame_{:04}.svg", self.s.frame + 1))),
             "file.export_fla" => Some((tr_noop!("Export FLA animation (rasterized)"), "path", "animation.fla".to_string())),
+            "file.export_fla_vector" => Some((tr_noop!("Export FLA animation (editable vectors)"), "path", "animation.fla".to_string())),
             "file.export_sprite_sheet" => Some((tr_noop!("Export sprite sheet (PNG + JSON frame map)"), "path", "sprites.png".to_string())),
             "file.export_video" => Some((tr_noop!("Export video (.webm or .mp4, made with your ffmpeg)"), "path", "animation.webm".to_string())),
             "file.export_lottie" => Some((tr_noop!("Export Lottie animation (JSON, for web and apps)"), "path", "animation.json".to_string())),
