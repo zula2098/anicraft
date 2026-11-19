@@ -1108,7 +1108,7 @@ fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
                 let m = element.transform.m;
                 let matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", m[0], m[1], m[2], m[3], m[4], m[5]);
                 let fills = fill.map(|colour| format!("<fills><FillStyle index=\"1\"><SolidColor color=\"{}\"/></FillStyle></fills>", colour.to_hex().to_ascii_uppercase())).unwrap_or_else(|| "<fills/>".to_string());
-                let strokes = stroke.map(|line| format!("<strokes><StrokeStyle index=\"1\"><SolidStroke weight=\"{}\" caps=\"round\" joints=\"round\" miterLimit=\"3\"><SolidColor color=\"{}\"/></SolidStroke></StrokeStyle></strokes>", line.width, line.color.to_hex().to_ascii_uppercase())).unwrap_or_else(|| "<strokes/>".to_string());
+                let strokes = stroke.map(|line| format!("<strokes><StrokeStyle index=\"1\"><SolidStroke scaleMode=\"normal\" weight=\"{}\" caps=\"round\" joints=\"round\" miterLimit=\"3\"><fill><SolidColor color=\"{}\"/></fill></SolidStroke></StrokeStyle></strokes>", line.width, line.color.to_hex().to_ascii_uppercase())).unwrap_or_else(|| "<strokes/>".to_string());
                 elements.push_str(&format!("<DOMShape>{matrix}{fills}{strokes}<edges>{edges}</edges></DOMShape>"));
                 shape_count += 1;
                 if shape_count > 100_000 {
