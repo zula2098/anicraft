@@ -205,6 +205,16 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     if !doc.library.is_empty() || !doc.bitmaps.is_empty() || !doc.sounds.is_empty() || !doc.document_class.is_empty() {
         return Err(EngineError::Format("native FLA export does not yet support library symbols, bitmaps, sounds, or document scripts".into()));
     }
+    let stage = doc.stage;
+    if stage.width == 0 || stage.height == 0
+        || stage.width > anicraft_doc::MAX_STAGE_EDGE
+        || stage.height > anicraft_doc::MAX_STAGE_EDGE
+    {
+        return Err(EngineError::Format("native FLA export requires stage dimensions between 1 and 16,384 pixels".into()));
+    }
+    if !stage.fps.is_finite() || !(1.0..=240.0).contains(&stage.fps) {
+        return Err(EngineError::Format("native FLA export requires a finite frame rate between 1 and 240 fps".into()));
+    }
     let frames = doc.frame_count();
     if frames > MAX_VECTOR_FRAMES {
         return Err(EngineError::Param(format!("native FLA export is limited to {MAX_VECTOR_FRAMES} frames")));
@@ -216,7 +226,6 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
         timelines.push_str(&format!("<DOMTimeline name=\"{}\">{layers}</DOMTimeline>", xml(&scene.name)));
     }
     timelines.push_str("</timelines>");
-    let stage = doc.stage;
     if stage.background.a != 1.0 {
         return Err(EngineError::Format("native FLA export does not yet support a translucent stage background".into()));
     }
@@ -242,6 +251,24 @@ mod tests {
     use anicraft_doc::{Element, ElementId, Shape};
     use anicraft_geom::Path;
     use std::sync::Arc;
+
+    #[test]
+    fn invalid_stage_dimensions_are_rejected() {
+        let mut doc = Document::default();
+        doc.stage.width = 0;
+        let error = export(&doc, FsPath::new("invalid.fla"))
+            .expect_err("zero-width stages cannot be exported");
+        assert!(error.to_string().contains("stage dimensions"));
+    }
+
+    #[test]
+    fn invalid_stage_frame_rate_is_rejected() {
+        let mut doc = Document::default();
+        doc.stage.fps = f32::INFINITY;
+        let error = export(&doc, FsPath::new("invalid.fla"))
+            .expect_err("non-finite frame rates cannot be exported");
+        assert!(error.to_string().contains("frame rate"));
+    }
 
     #[test]
     fn cubic_paths_are_approximated_as_bounded_editable_edges() {
