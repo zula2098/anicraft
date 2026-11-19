@@ -1024,7 +1024,7 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
             }
         }
     }
-    let media = sound_media;
+    let mut media = sound_media;
     let mut timeline_frames = String::new();
     // Animate requires the XFL mimetype entry to be the first local ZIP entry.
     // Keep it uncompressed (the package writer stores every entry) and before all assets.
