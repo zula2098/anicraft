@@ -232,7 +232,12 @@ public final class MainActivity extends GameActivity {
             // Some document providers don't expose metadata; the content is still readable.
         }
 
-        File cached = new File(getCacheDir(), "picked-" + System.currentTimeMillis() + "-" + displayName);
+        File documents = new File(getFilesDir(), "documents");
+        if (!documents.exists() && !documents.mkdirs()) {
+            nativeOnFilePicked("");
+            return;
+        }
+        File cached = new File(documents, "picked-" + System.currentTimeMillis() + "-" + displayName);
         try (InputStream input = getContentResolver().openInputStream(uri);
              OutputStream output = new FileOutputStream(cached)) {
             if (input == null) {
