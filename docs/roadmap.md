@@ -10,7 +10,7 @@ Streaming WAV headers and PCM sample blocks now delegate to `craft_audio::wav_st
 AniCraft retains mixing, frame-range limits, temporary-file cleanup and VFS writes.
 This integration depends on craft-libs #1962 and still requires hosted parity validation.
 
-A first **FLA export** is being added in `feat/fla-raster-export`: it writes a real XFL ZIP package with one rendered PNG per movie frame on a single Animate timeline layer. This preserves rendered appearance and timing, not editable vectors, text, symbols, source layers, sound or scripts. The round-trip test through AniCraft's importer is in CI; opening the generated file in Adobe Animate has not yet been verified.
+**FLA export** in `feat/fla-raster-export` now has two paths: a rasterized XFL ZIP export for a selected movie-frame range, and a first native editable serializer for single-scene documents made of solid-filled vector paths on normal layers with keyframes. The editable path preserves those paths, transforms, layer order and frame spans, and rejects unsupported artwork rather than flattening it. It does not yet cover strokes, gradients, bitmaps, symbols/groups, text, cubic paths, tweens, masks/folders, sound or scripts. Round-trip tests through AniCraft's importer are being checked in CI; opening either output in Adobe Animate has not yet been verified.
 
 | Dimension | Status |
 |---|---|
