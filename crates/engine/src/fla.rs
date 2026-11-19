@@ -528,6 +528,7 @@ mod tests {
         let xml = shape_xml(
             &shape,
             anicraft_geom::Affine::translate(3.0, 4.0),
+            &std::collections::HashMap::new(),
         ).expect("finite shape should export");
         assert!(xml.contains("weight=\"2\""), "stroke width is expressed in pixels: {xml}");
         assert!(xml.contains("tx=\"3\" ty=\"4\""), "matrix translation is expressed in pixels: {xml}");
@@ -542,7 +543,7 @@ mod tests {
         let mut stroke = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0);
         stroke.width = f32::NAN;
         shape.stroke = Some(stroke);
-        assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY)
+        assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY, &std::collections::HashMap::new())
             .expect_err("non-finite stroke widths must be rejected")
             .to_string().contains("positive stroke width"));
     }
@@ -603,6 +604,93 @@ mod tests {
             )],
         };
         assert!(edge_data(&path).is_err());
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn editable_vector_package_round_trips_symbols_and_bitmap_fills() {
+        let mut doc = Document::default();
+        let symbol_id = anicraft_doc::SymbolId(700);
+        let mut symbol_timeline = anicraft_doc::Timeline::default();
+        let symbol_layer = Arc::make_mut(&mut symbol_timeline.layers[0]);
+        let symbol_key = symbol_layer.keyframe_mut(0).expect("symbol layer has a first keyframe");
+        symbol_key.elements.push(Arc::new(Element {
+            id: ElementId(701),
+            name: "inside symbol".into(),
+            transform: anicraft_geom::Affine::IDENTITY,
+            color: anicraft_doc::ColorEffect::default(),
+            kind: ElementKind::Shape(Shape::filled(
+                Path::rect(0.0, 0.0, 12.0, 8.0),
+                Paint::Solid(anicraft_doc::Rgba::hex(0x22AA77)),
+            )),
+        }));
+        doc.library.push(Arc::new(anicraft_doc::Symbol {
+            id: symbol_id,
+            name: "Badge".into(),
+            kind: anicraft_doc::SymbolKind::Graphic,
+            linkage: None,
+            scale_grid: None,
+            scale_grid_kept: None,
+            timeline: symbol_timeline,
+        }));
+
+        let bitmap = anicraft_doc::Bitmap::from_rgba(
+            anicraft_doc::BitmapId(702),
+            "checker.png",
+            2,
+            2,
+            vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255],
+        ).expect("test bitmap should encode");
+        let bitmap_id = bitmap.id;
+        doc.bitmaps.push(Arc::new(bitmap));
+
+        let main_layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let main_key = main_layer.keyframe_mut(0).expect("main layer has a first keyframe");
+        main_key.elements.push(Arc::new(Element {
+            id: ElementId(703),
+            name: "symbol instance".into(),
+            transform: anicraft_geom::Affine::translate(24.0, 16.0),
+            color: anicraft_doc::ColorEffect::default(),
+            kind: ElementKind::Symbol {
+                symbol: symbol_id,
+                loop_mode: anicraft_doc::LoopMode::SingleFrame,
+                first_frame: 0,
+                blend: anicraft_doc::BlendMode::Normal,
+                filters: Vec::new(),
+                events: Vec::new(),
+                pivot: None,
+            },
+        }));
+        let mut bitmap_shape = Shape::filled(
+            Path::rect(0.0, 0.0, 20.0, 20.0),
+            Paint::Bitmap {
+                bitmap: bitmap_id,
+                repeat: false,
+                matrix: anicraft_geom::Affine::scale(10.0, 10.0),
+            },
+        );
+        bitmap_shape.stroke = None;
+        main_key.elements.push(Arc::new(Element {
+            id: ElementId(704),
+            name: "bitmap fill".into(),
+            transform: anicraft_geom::Affine::translate(4.0, 6.0),
+            color: anicraft_doc::ColorEffect::default(),
+            kind: ElementKind::Shape(bitmap_shape),
+        }));
+
+        let (bytes, _, _) = export(&doc, FsPath::new("library-roundtrip.fla")).expect("library export should succeed");
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the library package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        assert_eq!(opened.library.len(), 1);
+        assert_eq!(opened.bitmaps.len(), 1);
+        assert_eq!(opened.library[0].name, "Badge");
+        let elements = &opened.timeline(0).layers[0].keyframe_at(0).expect("main keyframe").elements;
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(elements[0].kind, ElementKind::Symbol { .. }));
+        let ElementKind::Shape(shape) = &elements[1].kind else { panic!("bitmap fill should remain a shape"); };
+        assert!(matches!(shape.fill, Some(Paint::Bitmap { .. })));
+        let symbol_shape = &opened.library[0].timeline.layers[0].keyframe_at(0).expect("symbol keyframe").elements[0];
+        assert!(matches!(symbol_shape.kind, ElementKind::Shape(_)));
     }
 
     #[test]
