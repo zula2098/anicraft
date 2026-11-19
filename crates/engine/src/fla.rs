@@ -191,9 +191,10 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     let xml_doc = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/>{timelines}</DOMDocument>", stage.width, stage.height, n(stage.fps), stage.background.to_hex());
     let stem = path.file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()).unwrap_or("AniCraft");
     let files = vec![
+        // XFL packages put the uncompressed mimetype entry first in the ZIP.
+        (PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()),
         (PathBuf::from("DOMDocument.xml"), xml_doc.into_bytes()),
         (PathBuf::from(format!("{stem}.xfl")), b"PROXY-CS5".to_vec()),
-        (PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()),
     ];
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
     Ok((bytes, frames, shapes))
