@@ -1017,23 +1017,11 @@ pub fn file_dialog(_cmd: &str, _title: &str, _default_name: &str) -> Option<Path
 
 #[cfg(target_os = "android")]
 #[allow(unsafe_code)]
-pub fn start_file_dialog(
-    cmd: &str,
-    title: &str,
-    _default_name: &str,
-    _window: &eframe::Frame,
-    _ui: eframe::egui::Context,
-) -> Option<FileAnswer> {
-    if !reads_file(cmd) {
-        return None;
-    }
-
+fn android_start_picker(title: &str, default_name: &str, open: bool) -> Option<FileAnswer> {
     let (tx, rx) = std::sync::mpsc::channel();
     let pending = ANDROID_PICKER.get_or_init(|| std::sync::Mutex::new(None));
     *pending.lock().ok()? = Some(tx);
 
-    // android-activity initializes ndk-context before android_main. The context is the
-    // GameActivity instance in this application, so this call opens the native SAF UI.
     let launched = (|| -> Result<(), String> {
         let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
         let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
@@ -1046,13 +1034,22 @@ pub fn start_file_dialog(
         // AndroidApp owns this global Activity reference; do not delete it here.
         let activity = unsafe { jni::objects::JObject::from_raw(activity_ptr.cast()) };
         let title = env.new_string(title).map_err(|e| e.to_string())?;
-        env.call_method(
-            &activity,
-            "openDocument",
-            "(Ljava/lang/String;)V",
-            &[jni::objects::JValue::Object(&title)],
-        )
-        .map_err(|e| e.to_string())?;
+        if open {
+            env.call_method(
+                &activity,
+                "openDocument",
+                "(Ljava/lang/String;)V",
+                &[jni::objects::JValue::Object(&title)],
+            ).map_err(|e| e.to_string())?;
+        } else {
+            let name = env.new_string(default_name).map_err(|e| e.to_string())?;
+            env.call_method(
+                &activity,
+                "createDocument",
+                "(Ljava/lang/String;Ljava/lang/String;)V",
+                &[jni::objects::JValue::Object(&title), jni::objects::JValue::Object(&name)],
+            ).map_err(|e| e.to_string())?;
+        }
         Ok(())
     })();
 
@@ -1063,6 +1060,19 @@ pub fn start_file_dialog(
         return None;
     }
     Some(rx)
+}
+
+#[cfg(target_os = "android")]
+pub fn start_file_dialog(
+    cmd: &str,
+    title: &str,
+    default_name: &str,
+    _window: &eframe::Frame,
+    _ui: eframe::egui::Context,
+) -> Option<FileAnswer> {
+    // Open/import commands read a picked document; Save As and every single-file export
+    // create a destination through ACTION_CREATE_DOCUMENT.
+    android_start_picker(title, default_name, reads_file(cmd))
 }
 
 /// Called by MainActivity after copying the selected content URI into the app cache.
@@ -1100,15 +1110,43 @@ pub fn save_dialog(
 
 #[cfg(target_os = "android")]
 pub fn start_save_dialog(
-    _title: &str,
+    title: &str,
     _label: &str,
-    _ext: &str,
+    ext: &str,
     _dir: Option<&std::path::Path>,
-    _default_name: &str,
+    default_name: &str,
     _window: &eframe::Frame,
     _ui: eframe::egui::Context,
 ) -> Option<FileAnswer> {
-    None
+    let filename = if std::path::Path::new(default_name).extension().is_some() {
+        default_name.to_string()
+    } else {
+        format!("{default_name}.{ext}")
+    };
+    android_start_picker(title, &filename, false)
+}
+
+/// Flush a file written to the private staging area back to its Android SAF destination.
+/// Files not created through the picker are left alone.
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+pub fn commit_android_file(path: &Path) -> Result<(), String> {
+    let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
+    let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
+    if vm_ptr.is_null() || activity_ptr.is_null() {
+        return Err("Android Activity is not available".into());
+    }
+    let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }.map_err(|e| e.to_string())?;
+    let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
+    let activity = unsafe { jni::objects::JObject::from_raw(activity_ptr.cast()) };
+    let path = env.new_string(path.to_string_lossy().as_ref()).map_err(|e| e.to_string())?;
+    let written = env.call_method(
+        &activity,
+        "commitDocument",
+        "(Ljava/lang/String;)Z",
+        &[jni::objects::JValue::Object(&path)],
+    ).map_err(|e| e.to_string())?.z().map_err(|e| e.to_string())?;
+    if written { Ok(()) } else { Err("Android could not write the selected document. Check the storage provider's permission and available space.".into()) }
 }
 
 
