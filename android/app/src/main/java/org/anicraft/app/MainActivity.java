@@ -5,6 +5,9 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.OpenableColumns;
+import android.webkit.MimeTypeMap;
+
+import androidx.documentfile.provider.DocumentFile;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -26,6 +29,7 @@ import java.io.IOException;
 public final class MainActivity extends GameActivity {
     private static final int REQUEST_OPEN_DOCUMENT = 4107;
     private static final int REQUEST_CREATE_DOCUMENT = 4108;
+    private static final int REQUEST_OPEN_FOLDER = 4109;
 
     private static native void nativeOnFilePicked(String cachedPath);
 
@@ -53,6 +57,64 @@ public final class MainActivity extends GameActivity {
             }
             startActivityForResult(intent, REQUEST_CREATE_DOCUMENT);
         });
+    }
+
+    /** Choose a folder for an export that creates several files. */
+    public void openExportFolder(String title) {
+        runOnUiThread(() -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(intent, REQUEST_OPEN_FOLDER);
+        });
+    }
+
+    /** Copy every generated frame from the staging directory into the selected SAF folder. */
+    public boolean commitFolder(String cachedPath) {
+        String uriText = getSharedPreferences("saf-documents", MODE_PRIVATE)
+            .getString(cachedPath, null);
+        if (uriText == null) return true;
+        File source = new File(cachedPath);
+        DocumentFile root = DocumentFile.fromTreeUri(this, Uri.parse(uriText));
+        return source.isDirectory() && root != null && copyFolderContents(source, root);
+    }
+
+    private boolean copyFolderContents(File source, DocumentFile target) {
+        File[] children = source.listFiles();
+        if (children == null) return false;
+        for (File child : children) {
+            if (child.isDirectory()) {
+                DocumentFile directory = target.findFile(child.getName());
+                if (directory == null || !directory.isDirectory()) {
+                    directory = target.createDirectory(child.getName());
+                }
+                if (directory == null || !copyFolderContents(child, directory)) return false;
+            } else {
+                String extension = "";
+                int dot = child.getName().lastIndexOf('.');
+                if (dot >= 0 && dot + 1 < child.getName().length()) {
+                    extension = child.getName().substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+                }
+                String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+                if (mime == null) mime = "application/octet-stream";
+                DocumentFile old = target.findFile(child.getName());
+                if (old != null && !old.delete()) return false;
+                DocumentFile output = target.createFile(mime, child.getName());
+                if (output == null) return false;
+                try (InputStream input = new java.io.FileInputStream(child);
+                     OutputStream stream = getContentResolver().openOutputStream(output.getUri(), "wt")) {
+                    if (stream == null) return false;
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) stream.write(buffer, 0, count);
+                    stream.flush();
+                } catch (Exception error) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**
@@ -83,7 +145,7 @@ public final class MainActivity extends GameActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQUEST_OPEN_DOCUMENT && requestCode != REQUEST_CREATE_DOCUMENT) {
+        if (requestCode != REQUEST_OPEN_DOCUMENT && requestCode != REQUEST_CREATE_DOCUMENT && requestCode != REQUEST_OPEN_FOLDER) {
             return;
         }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
@@ -92,6 +154,29 @@ public final class MainActivity extends GameActivity {
         }
 
         Uri uri = data.getData();
+        if (requestCode == REQUEST_OPEN_FOLDER) {
+            File documents = new File(getFilesDir(), "documents");
+            if (!documents.exists() && !documents.mkdirs()) {
+                nativeOnFilePicked("");
+                return;
+            }
+            File folder = new File(documents, "export-" + System.currentTimeMillis());
+            try {
+                if (!folder.mkdirs()) throw new IOException("Could not create the export staging folder");
+                try {
+                    getContentResolver().takePersistableUriPermission(uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                } catch (SecurityException ignored) {
+                    // Some providers do not offer persistable grants.
+                }
+                getSharedPreferences("saf-documents", MODE_PRIVATE).edit()
+                    .putString(folder.getAbsolutePath(), uri.toString()).apply();
+                nativeOnFilePicked(folder.getAbsolutePath());
+            } catch (Exception error) {
+                nativeOnFilePicked("");
+            }
+            return;
+        }
         if (requestCode == REQUEST_CREATE_DOCUMENT) {
             String displayName = "Untitled.anicraft";
             try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
