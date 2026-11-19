@@ -217,7 +217,7 @@ fn push_bounded_to(out: &mut String, part: &str, limit: usize) -> Result<()> {
 }
 
 fn safe_library_path(name: &str) -> Result<String> {
-    if name.is_empty() || name.starts_with('/') || name.contains('\\\\')
+    if name.is_empty() || name.starts_with('/') || name.contains('\\')
         || name.split('/').any(|part| part.is_empty() || part == "." || part == "..")
     {
         return Err(EngineError::Format(format!("library path '{name}' cannot be represented safely in an XFL package")));
@@ -234,7 +234,7 @@ fn sound_library_name(doc: &Document, sound: &anicraft_doc::Sound) -> Result<Str
     let entry = doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Sound(sound.id)));
     let mut path = PathBuf::from(entry);
     path.set_extension(extension);
-    path.to_string_lossy().replace('\\', "/")
+    safe_library_path(&path.to_string_lossy())
 }
 
 pub(crate) fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> {
