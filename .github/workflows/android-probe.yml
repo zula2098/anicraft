@@ -20,6 +20,12 @@ on:
       - ".github/workflows/android-probe.yml"
   workflow_dispatch:
 
+# Keep only the newest Android build for a branch; successive commits should not
+# compile the same large Rust dependency graph concurrently.
+concurrency:
+  group: android-probe-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
