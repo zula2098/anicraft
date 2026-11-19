@@ -914,7 +914,7 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
 /// while source vectors remain editable only after a future native XFL serializer is added.
 fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     const MAX_FLA_PIXELS: u64 = 100_000_000;
-    const MAX_FLA_BYTES: usize = 512 * 1024 * 1024;
+    const MAX_FLA_BYTES: usize = 256 * 1024 * 1024;
     const MAX_FLA_FRAMES: u32 = 10_000;
 
     let path = PathBuf::from(str_req(p, "path")?);
@@ -954,7 +954,7 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     let total_png_bytes = frames.iter().try_fold(0usize, |total, frame| total.checked_add(frame.len()))
         .ok_or_else(|| EngineError::Param("FLA export size overflow".into()))?;
     if total_png_bytes > MAX_FLA_BYTES {
-        return Err(EngineError::Param("the rendered FLA assets exceed the 512 MB export limit; export a shorter range".into()));
+        return Err(EngineError::Param("the rendered FLA assets exceed the 256 MB export limit; export a shorter range".into()));
     }
 
     let stage = doc.stage;
@@ -962,7 +962,7 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     let mut media = String::new();
     let mut timeline_frames = String::new();
     let mut files = Vec::with_capacity(frames.len() + 3);
-    for (index, png) in frames.iter().enumerate() {
+    for (index, png) in frames.into_iter().enumerate() {
         let file = format!("frame_{index:06}.png");
         let library_name = format!("Frames/{file}");
         let id = format!("00000000-0000-0000-0000-{index:012}");
@@ -974,7 +974,7 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
         timeline_frames.push_str(&format!(
             "<DOMFrame index=\"{index}\" duration=\"1\" keyMode=\"9728\"><elements><DOMBitmapInstance libraryItemName=\"{library_name}\"><matrix><Matrix/></matrix></DOMBitmapInstance></elements></DOMFrame>"
         ));
-        files.push((PathBuf::from("LIBRARY").join("Frames").join(file), png.clone()));
+        files.push((PathBuf::from("LIBRARY").join("Frames").join(file), png));
     }
     let xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
