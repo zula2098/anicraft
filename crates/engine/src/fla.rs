@@ -216,7 +216,16 @@ fn push_bounded_to(out: &mut String, part: &str, limit: usize) -> Result<()> {
     Ok(())
 }
 
-fn sound_library_name(doc: &Document, sound: &anicraft_doc::Sound) -> String {
+fn safe_library_path(name: &str) -> Result<String> {
+    if name.is_empty() || name.starts_with('/') || name.contains('\\\\')
+        || name.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return Err(EngineError::Format(format!("library path '{name}' cannot be represented safely in an XFL package")));
+    }
+    Ok(name.to_string())
+}
+
+fn sound_library_name(doc: &Document, sound: &anicraft_doc::Sound) -> Result<String> {
     let extension = match sound.format {
         SoundFormat::Wav => "wav",
         SoundFormat::Ogg => "ogg",
@@ -235,7 +244,7 @@ pub(crate) fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, V
         if sound.data.is_empty() {
             return Err(EngineError::Format(format!("sound '{}' has no audio data", sound.name)));
         }
-        let name = sound_library_name(doc, sound);
+        let name = sound_library_name(doc, sound)?;
         let id = format!("00000000-0000-0000-0000-{:012}", sound.id.0 % 1_000_000_000_000);
         let rate_khz = ((sound.rate + 500) / 1000).max(1);
         let channels = if sound.channels == 1 { "Mono" } else { "Stereo" };
@@ -429,18 +438,12 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     }
     let mut symbol_names = std::collections::HashMap::new();
     for symbol in &doc.library {
-        let name = doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Symbol(symbol.id)));
-        if name.is_empty() || name.contains('\\\\') {
-            return Err(EngineError::Format(format!("symbol '{}' has an invalid library path", symbol.name)));
-        }
+        let name = safe_library_path(&doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Symbol(symbol.id))) )?;
         symbol_names.insert(symbol.id, name);
     }
     let mut bitmap_names = std::collections::HashMap::new();
     for bitmap in &doc.bitmaps {
-        let name = doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Bitmap(bitmap.id)));
-        if name.is_empty() || name.contains('\\\\') {
-            return Err(EngineError::Format(format!("bitmap '{}' has an invalid library path", bitmap.name)));
-        }
+        let name = safe_library_path(&doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Bitmap(bitmap.id))) )?;
         bitmap_names.insert(bitmap.id, name);
     }
     let mut symbols_xml = String::new();
