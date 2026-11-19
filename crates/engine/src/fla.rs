@@ -309,13 +309,6 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         let instance = format!("<DOMSymbolInstance libraryItemName=\"{}\"{symbol_type} loop=\"{loop_value}\" firstFrame=\"{}\"{label}>{matrix}</DOMSymbolInstance>", xml(name), first_frame);
                         push_bounded(&mut elements, &instance)?;
                     }
-                    ElementKind::Shape(shape) if matches!(shape.fill, Some(Paint::Bitmap { .. })) => {
-                        let bitmap = match &shape.fill { Some(Paint::Bitmap { bitmap, .. }) => *bitmap, _ => return Err(EngineError::Format("bitmap fill is missing".into())) };
-                        let name = bitmap_names.get(&bitmap).ok_or_else(|| EngineError::Format(format!("bitmap instance '{}' references missing bitmap {}", element.name, bitmap.0)))?;
-                        let matrix = transform_xml(element.transform)?;
-                        let instance = format!("<DOMBitmapInstance libraryItemName=\"{}\">{matrix}</DOMBitmapInstance>", xml(name));
-                        push_bounded(&mut elements, &instance)?;
-                    }
                     _ => {
                         return Err(EngineError::Format(format!("native FLA export does not yet support element '{}' of type {:?}", element.name, element.kind)));
                     }
