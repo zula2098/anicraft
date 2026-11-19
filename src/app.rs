@@ -4375,6 +4375,32 @@ impl App {
                 Ok(Some(path)) => {
                     let (id, key) = (*id, *key);
                     self.file_dialog = None;
+                    // ACTION_CREATE_DOCUMENT creates the destination in SAF immediately.
+                    // Android also gives us an empty private staging file for the path-based
+                    // exporter. Leaving that placeholder in place makes request() treat it as
+                    // an existing file and ask for overwrite confirmation; if the user doesn't
+                    // confirm, SAF is left with a zero-byte document. Remove only that empty
+                    // staging placeholder before running output commands. Keep the SAF URI
+                    // mapping: commit_android_file() still needs it after the exporter finishes.
+                    #[cfg(target_os = "android")]
+                    if !platform::reads_file(id) {
+                        match std::fs::metadata(&path) {
+                            Ok(metadata) if metadata.len() == 0 => {
+                                if let Err(error) = std::fs::remove_file(&path) {
+                                    self.status_err(format!("Could not prepare the selected export destination: {error}"));
+                                    return;
+                                }
+                            }
+                            Ok(_) => {
+                                self.status_err("The selected export staging file was not empty; refusing to overwrite it.");
+                                return;
+                            }
+                            Err(error) => {
+                                self.status_err(format!("Could not inspect the selected export destination: {error}"));
+                                return;
+                            }
+                        }
+                    }
                     self.request(id, json!({ key: path.display().to_string() }));
                 }
                 Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => self.file_dialog = None,
