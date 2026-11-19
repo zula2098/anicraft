@@ -225,7 +225,7 @@ fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<(Stri
                 envelope.push_str("</SoundEnvelope>");
             }
         }
-        preset => attrs.push_str(&format!(" soundEffect=\"{}\"", xml(preset.label()))),
+        preset => attrs.push_str(&format!(" soundEffect=\"{}\"", preset.key())),
     }
     Ok((attrs, envelope))
 }
