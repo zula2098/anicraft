@@ -50,6 +50,7 @@ fn edge_data(path: &Path) -> Result<String> {
                 start = Some(p);
             }
             PathCmd::LineTo(p) => {
+                if current.is_none() { return Err(EngineError::Format("vector path has a line before its first move".into())); }
                 if !p.is_finite() { return Err(EngineError::Format("vector path contains a non-finite point".into())); }
                 if emitted_edges >= MAX_VECTOR_PATH_COMMANDS { return Err(EngineError::Format("vector path exceeds the 100,000-edge safety limit".into())); }
                 out.push('|');
@@ -58,6 +59,7 @@ fn edge_data(path: &Path) -> Result<String> {
                 current = Some(p);
             }
             PathCmd::QuadTo(c, p) => {
+                if current.is_none() { return Err(EngineError::Format("vector path has a curve before its first move".into())); }
                 if !(c.is_finite() && p.is_finite()) { return Err(EngineError::Format("vector path contains a non-finite point".into())); }
                 if emitted_edges >= MAX_VECTOR_PATH_COMMANDS { return Err(EngineError::Format("vector path exceeds the 100,000-edge safety limit".into())); }
                 out.push(']');
@@ -316,6 +318,17 @@ mod tests {
         assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY)
             .expect_err("non-finite miter limits must be rejected")
             .to_string().contains("miter limit"));
+    }
+
+    #[test]
+    fn line_and_quadratic_paths_without_a_move_are_rejected() {
+        let line = Path { cmds: vec![PathCmd::LineTo(anicraft_geom::Vec2::new(1.0, 1.0))] };
+        assert!(edge_data(&line).expect_err("line needs a starting point").to_string().contains("line before its first move"));
+        let quad = Path { cmds: vec![PathCmd::QuadTo(
+            anicraft_geom::Vec2::new(1.0, 1.0),
+            anicraft_geom::Vec2::new(2.0, 2.0),
+        )] };
+        assert!(edge_data(&quad).expect_err("quadratic needs a starting point").to_string().contains("curve before its first move"));
     }
 
     #[test]
