@@ -131,17 +131,26 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
         {
             return Err(EngineError::Format("native FLA export requires a finite miter limit between 1 and 100".into()));
         }
+        let weight_twips = line.width * TWIPS;
+        if !weight_twips.is_finite() {
+            return Err(EngineError::Format("vector stroke width exceeds the finite XFL range".into()));
+        }
         stroke_index = 1;
         let c = line.color.sanitized();
         let caps = match line.style.cap { anicraft_doc::Cap::Butt => "none", anicraft_doc::Cap::Round => "round", anicraft_doc::Cap::Square => "square" };
         let joins = match line.style.join { anicraft_doc::Join::Miter => "miter", anicraft_doc::Join::Round => "round", anicraft_doc::Join::Bevel => "bevel" };
-        stroke = format!("<strokes><StrokeStyle index=\"1\"><SolidStroke scaleMode=\"normal\" weight=\"{}\" caps=\"{}\" joints=\"{}\" miterLimit=\"{}\"><fill><SolidColor color=\"{}\" alpha=\"{}\"/></fill></SolidStroke></StrokeStyle></strokes>", n(line.width), caps, joins, n(line.style.miter_limit), c.to_hex(), n(c.a));
+        stroke = format!("<strokes><StrokeStyle index=\"1\"><SolidStroke scaleMode=\"normal\" weight=\"{}\" caps=\"{}\" joints=\"{}\" miterLimit=\"{}\"><fill><SolidColor color=\"{}\" alpha=\"{}\"/></fill></SolidStroke></StrokeStyle></strokes>", n(weight_twips), caps, joins, n(line.style.miter_limit), c.to_hex(), n(c.a));
     }
     if fill_index == 0 && stroke_index == 0 { return Ok(String::new()); }
     let mut matrix = String::new();
     if transform != anicraft_geom::Affine::IDENTITY {
         if !transform.is_finite() { return Err(EngineError::Format("element transform is not finite".into())); }
         let [a,b,c,d,tx,ty] = transform.m;
+        let tx = tx * TWIPS;
+        let ty = ty * TWIPS;
+        if !(tx.is_finite() && ty.is_finite()) {
+            return Err(EngineError::Format("element translation exceeds the finite XFL range".into()));
+        }
         matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", n(a), n(b), n(c), n(d), n(tx), n(ty));
     }
     let edges = edge_data(&shape.path)?;
@@ -339,6 +348,35 @@ mod tests {
         }));
         let error = edge_data(&Path { cmds }).expect_err("oversized paths must be rejected");
         assert!(error.to_string().contains("100,000-command safety limit"));
+    }
+
+    #[test]
+    fn stroke_width_and_transform_translation_use_xfl_twips() {
+        let mut shape = Shape::filled(
+            Path::rect(0.0, 0.0, 10.0, 10.0),
+            Paint::Solid(anicraft_doc::Rgba::hex(0x336699)),
+        );
+        shape.stroke = Some(anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0));
+        let xml = shape_xml(
+            &shape,
+            anicraft_geom::Affine::translate(3.0, 4.0),
+        ).expect("finite shape should export");
+        assert!(xml.contains("weight=\"40\""), "stroke width must be converted from pixels to twips: {xml}");
+        assert!(xml.contains("tx=\"60\" ty=\"80\""), "matrix translation must be converted from pixels to twips: {xml}");
+    }
+
+    #[test]
+    fn stroke_width_that_overflows_twips_is_rejected() {
+        let mut shape = Shape::filled(
+            Path::rect(0.0, 0.0, 10.0, 10.0),
+            Paint::Solid(anicraft_doc::Rgba::hex(0x336699)),
+        );
+        let mut stroke = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0);
+        stroke.width = f32::MAX;
+        shape.stroke = Some(stroke);
+        assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY)
+            .expect_err("overflowing twip width must be rejected")
+            .to_string().contains("finite XFL range"));
     }
 
     #[test]
