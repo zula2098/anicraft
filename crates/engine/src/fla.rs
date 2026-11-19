@@ -1,6 +1,6 @@
 //! First native-vector slice of the XFL/FLA exporter.
 //!
-//! It writes editable paths, solid fills/strokes, layer visibility, and keyframe timing.
+//! It writes editable paths, solid/gradient/bitmap fills, library symbols, bitmap and sound assets, and keyframe timing.
 //! Unsupported document features are rejected rather than silently flattened or discarded.
 
 use crate::{EngineError, Result};
@@ -627,6 +627,43 @@ mod tests {
             )],
         };
         assert!(edge_data(&path).is_err());
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn editable_vector_package_round_trips_gradient_fills() {
+        let mut doc = Document::default();
+        let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
+        let paint = Paint::Linear {
+            start: anicraft_geom::Vec2::new(-30.0, 0.0),
+            end: anicraft_geom::Vec2::new(30.0, 0.0),
+            stops: vec![
+                anicraft_doc::GradientStop { offset: 0.0, color: anicraft_doc::Rgba::hex(0x112233) },
+                anicraft_doc::GradientStop { offset: 0.4, color: anicraft_doc::Rgba::hex(0x445566).with_alpha(0.7) },
+                anicraft_doc::GradientStop { offset: 1.0, color: anicraft_doc::Rgba::hex(0x778899) },
+            ],
+            spread: anicraft_doc::Spread::Reflect,
+            linear_rgb: true,
+        };
+        key.elements.push(Arc::new(Element {
+            id: ElementId(8001),
+            name: "gradient".into(),
+            transform: anicraft_geom::Affine::IDENTITY,
+            color: anicraft_doc::ColorEffect::default(),
+            kind: ElementKind::Shape(Shape::filled(Path::rect(0.0, 0.0, 60.0, 20.0), paint)),
+        }));
+        let (bytes, _, _) = export(&doc, FsPath::new("gradient-roundtrip.fla")).expect("gradient package should export");
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the gradient package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        let element = &opened.timeline(0).layers[0].keyframe_at(0).expect("main keyframe").elements[0];
+        let ElementKind::Shape(shape) = &element.kind else { panic!("gradient remains a shape"); };
+        let Some(Paint::Linear { stops, spread, linear_rgb, start, end }) = &shape.fill else { panic!("linear gradient should round-trip"); };
+        assert_eq!(*spread, anicraft_doc::Spread::Reflect);
+        assert!(*linear_rgb);
+        assert_eq!(stops.len(), 3);
+        assert!((stops[1].offset - 0.4).abs() < 0.001);
+        assert!((start.x + 30.0).abs() < 0.01 && (end.x - 30.0).abs() < 0.01);
     }
 
     #[test]
