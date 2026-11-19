@@ -922,6 +922,10 @@ fn export_gif(s: &mut Session, p: &Value) -> Result<Value> {
 /// rasterizes each movie frame into a full-stage bitmap: timing and appearance are preserved.
 /// The separate beta vector command exports the currently supported editable-shape subset.
 
+fn escape_fla_xml(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
 fn write_fla_package(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     if bytes.len() < 4 || !bytes.starts_with(b"PK\x03\x04") {
         return Err(EngineError::Format("FLA exporter produced an invalid or empty ZIP package".into()));
@@ -995,7 +999,32 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
 
     let stage = doc.stage;
     let fps = format!("{:.3}", stage.fps);
-    let mut media = String::new();
+    let (sound_media, mut sound_files) = crate::fla::sound_media_xml(doc)?;
+    let mut audio_layers = String::new();
+    for (scene_index, scene) in doc.scenes.iter().enumerate() {
+        let scene_start = doc.scene_start(scene_index);
+        for layer in &scene.timeline.layers {
+            let mut sound_frames = String::new();
+            for key in &layer.keyframes {
+                if key.sound.is_none() {
+                    continue;
+                }
+                let movie_frame = scene_start.saturating_add(key.start);
+                if movie_frame < from || movie_frame > to {
+                    continue;
+                }
+                let (attrs, envelope) = crate::fla::frame_sound_xml(key, doc)?;
+                let duration = key.duration.max(1).min(to.saturating_sub(movie_frame).saturating_add(1));
+                let frame = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{}>{}</DOMFrame>", movie_frame - from, duration, attrs, envelope);
+                sound_frames.push_str(&frame);
+            }
+            if !sound_frames.is_empty() {
+                let name = format!("{} — {}", scene.name, layer.name);
+                audio_layers.push_str(&format!("<DOMLayer name=\"{}\" color=\"{}\"><frames>{sound_frames}</frames></DOMLayer>", escape_fla_xml(&name), layer.color.to_hex()));
+            }
+        }
+    }
+    let media = sound_media;
     let mut timeline_frames = String::new();
     // Animate requires the XFL mimetype entry to be the first local ZIP entry.
     // Keep it uncompressed (the package writer stores every entry) and before all assets.
@@ -1016,11 +1045,12 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
         files.push((PathBuf::from("LIBRARY").join("Frames").join(file), png));
     }
     let xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" currentTimeline=\"1\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer>{audio_layers}</layers></DOMTimeline></timelines></DOMDocument>",
         stage.width, stage.height, fps, stage.background.to_hex()
     );
     files.push((PathBuf::from("DOMDocument.xml"), xml.into_bytes()));
     let marker_name = path.file_stem().and_then(|name| name.to_str()).filter(|name| !name.is_empty()).unwrap_or("AniCraft");
+    files.append(&mut sound_files);
     files.push((PathBuf::from(format!("{marker_name}.xfl")), b"PROXY-CS5".to_vec()));
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
     write_fla_package(&path, &bytes)?;
