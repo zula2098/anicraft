@@ -435,15 +435,17 @@ mod tests {
         let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
         let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
         key.duration = 4;
+        let mut shape = Shape::filled(
+            Path::rect(0.0, 0.0, 40.0, 24.0),
+            Paint::Solid(anicraft_doc::Rgba::hex(0xD9452B)),
+        );
+        shape.stroke = Some(anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0));
         key.elements.push(Arc::new(Element {
             id: ElementId(9001),
             name: "editable rectangle".into(),
             transform: anicraft_geom::Affine::translate(12.0, 8.0),
             color: anicraft_doc::ColorEffect::default(),
-            kind: ElementKind::Shape(Shape::filled(
-                Path::rect(0.0, 0.0, 40.0, 24.0),
-                Paint::Solid(anicraft_doc::Rgba::hex(0xD9452B)),
-            )),
+            kind: ElementKind::Shape(shape),
         }));
 
         let (bytes, frames, shapes) = export(&doc, FsPath::new("roundtrip.fla")).expect("export should succeed");
@@ -456,5 +458,11 @@ mod tests {
         assert_eq!(opened.frame_count(), 4);
         let imported = opened.timeline(0).layers.first().and_then(|l| l.keyframe_at(0));
         assert_eq!(imported.map(|k| k.elements.len()), Some(1));
+        let element = imported.and_then(|k| k.elements.first()).expect("round-tripped shape should exist");
+        assert_eq!(element.transform.translation(), anicraft_geom::Vec2::new(12.0, 8.0));
+        let ElementKind::Shape(imported_shape) = &element.kind else {
+            panic!("round-tripped element should remain a vector shape");
+        };
+        assert_eq!(imported_shape.stroke.as_ref().map(|stroke| stroke.width), Some(2.0));
     }
 }
