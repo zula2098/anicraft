@@ -968,10 +968,11 @@ impl App {
     pub fn run(&mut self, id: &str, params: Value) -> Option<Value> {
         let result = self.s.execute(id, &params);
         #[cfg(target_os = "android")]
-        if result.is_ok() && id.starts_with("file.") && id != "file.publish" {
+        if result.is_ok() && (id == "file.save" || id == "file.save_as" || id.starts_with("file.export_")) {
             // SAF creates a document URI, while the existing engine writes to ordinary paths.
             // The picker supplies a private staging path; copy the finished output back to the
-            // provider only after the command has successfully closed its file.
+            // provider only after the command has successfully closed its file. Import commands
+            // must not pass through this path: their cached input files have no output URI.
             if id == "file.export_png_sequence" {
                 if let Some(dir) = params.get("dir").and_then(Value::as_str) {
                     if let Err(error) = platform::commit_android_folder(std::path::Path::new(dir)) {

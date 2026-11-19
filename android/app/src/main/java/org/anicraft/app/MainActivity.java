@@ -76,9 +76,12 @@ public final class MainActivity extends GameActivity {
 
     /** Copy every generated frame from the staging directory into the selected SAF folder. */
     public boolean commitFolder(String cachedPath) {
+        if (cachedPath == null || cachedPath.isEmpty()) return false;
         String uriText = getSharedPreferences("saf-documents", MODE_PRIVATE)
             .getString(cachedPath, null);
-        if (uriText == null) return true;
+        // A missing mapping is an error for an export target, not a successful no-op:
+        // otherwise the SAF placeholder remains a zero-byte file/folder.
+        if (uriText == null) return false;
         File source = new File(cachedPath);
         DocumentFile root = DocumentFile.fromTreeUri(this, Uri.parse(uriText));
         return source.isDirectory() && root != null && copyFolderContents(source, root);
@@ -105,20 +108,47 @@ public final class MainActivity extends GameActivity {
                 DocumentFile old = target.findFile(child.getName());
                 if (old != null && !old.delete()) return false;
                 DocumentFile output = target.createFile(mime, child.getName());
-                if (output == null) return false;
-                try (InputStream input = new java.io.FileInputStream(child);
-                     OutputStream stream = getContentResolver().openOutputStream(output.getUri(), "w")) {
-                    if (stream == null) return false;
-                    byte[] buffer = new byte[64 * 1024];
-                    int count;
-                    while ((count = input.read(buffer)) != -1) stream.write(buffer, 0, count);
-                    stream.flush();
-                } catch (Exception error) {
-                    return false;
-                }
+                if (output == null || !copyFileToUri(child, output.getUri())) return false;
             }
         }
         return true;
+    }
+
+    /** Copy one complete, non-empty staging file and verify the provider's reported size. */
+    private boolean copyFileToUri(File source, Uri destination) {
+        if (source == null || !source.isFile()) return false;
+        long expected = source.length();
+        if (expected <= 0) return false;
+        long copied = 0;
+        try (InputStream input = new java.io.FileInputStream(source);
+             OutputStream output = getContentResolver().openOutputStream(destination, "wt")) {
+            if (output == null) return false;
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                output.write(buffer, 0, count);
+                copied += count;
+            }
+            output.flush();
+        } catch (Exception error) {
+            return false;
+        }
+        if (copied != expected) return false;
+        long actual = queryDocumentSize(destination);
+        return actual < 0 || actual == copied;
+    }
+
+    /** Returns -1 when the provider does not expose a size. */
+    private long queryDocumentSize(Uri uri) {
+        try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column);
+            }
+        } catch (Exception ignored) {
+            // Some cloud providers do not expose metadata immediately after writing.
+        }
+        return -1;
     }
 
     /**
@@ -129,21 +159,8 @@ public final class MainActivity extends GameActivity {
         if (cachedPath == null || cachedPath.isEmpty()) return false;
         String uriText = getSharedPreferences("saf-documents", MODE_PRIVATE)
             .getString(cachedPath, null);
-        if (uriText == null) return true; // Not a file created through the Android picker.
-        Uri uri = Uri.parse(uriText);
-        File source = new File(cachedPath);
-        if (!source.isFile()) return false;
-        try (InputStream input = new java.io.FileInputStream(source);
-             OutputStream output = getContentResolver().openOutputStream(uri, "w")) {
-            if (output == null) return false;
-            byte[] buffer = new byte[64 * 1024];
-            int count;
-            while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-            output.flush();
-            return true;
-        } catch (Exception error) {
-            return false;
-        }
+        if (uriText == null) return false;
+        return copyFileToUri(new File(cachedPath), Uri.parse(uriText));
     }
 
     @Override
