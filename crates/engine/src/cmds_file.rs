@@ -972,12 +972,12 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
             u64::from(stage.height) * 20,
         ));
         timeline_frames.push_str(&format!(
-            "<DOMFrame index=\"{index}\" duration=\"1\" keyMode=\"9728\"><elements><DOMBitmapInstance libraryItemName=\"{library_name}\"><matrix><Matrix/></matrix></DOMBitmapInstance></elements></DOMFrame>"
+            "<DOMFrame index=\"{index}\" duration=\"1\" keyMode=\"9728\"><elements><DOMBitmapInstance libraryItemName=\"{library_name}\"><matrix><Matrix a=\"1\" b=\"0\" c=\"0\" d=\"1\" tx=\"0\" ty=\"0\"/></matrix></DOMBitmapInstance></elements></DOMFrame>"
         ));
         files.push((PathBuf::from("LIBRARY").join("Frames").join(file), png));
     }
     let xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DOMDocument xmlns=\"http://ns.adobe.com/xfl/2008/\" width=\"{}\" height=\"{}\" frameRate=\"{}\" backgroundColor=\"{}\" xflVersion=\"2.971\" creatorInfo=\"AniCraft\"><folders/><media>{media}</media><timelines><DOMTimeline name=\"Scene 1\"><layers><DOMLayer name=\"AniCraft (rasterized)\" color=\"#4F80FF\"><frames>{timeline_frames}</frames></DOMLayer></layers></DOMTimeline></timelines></DOMDocument>",
         stage.width, stage.height, fps, stage.background.to_hex()
     );
     files.push((PathBuf::from("DOMDocument.xml"), xml.into_bytes()));
