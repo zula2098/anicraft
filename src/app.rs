@@ -972,12 +972,21 @@ impl App {
             // SAF creates a document URI, while the existing engine writes to ordinary paths.
             // The picker supplies a private staging path; copy the finished output back to the
             // provider only after the command has successfully closed its file.
-            let target = params.get("path").and_then(Value::as_str).map(str::to_string)
-                .or_else(|| (id == "file.save").then(|| self.s.path.as_ref().map(|p| p.display().to_string())).flatten());
-            if let Some(path) = target {
-                if let Err(error) = platform::commit_android_file(std::path::Path::new(&path)) {
-                    self.status_err(crate::i18n::t_dyn(&error).into_owned());
-                    return None;
+            if id == "file.export_png_sequence" {
+                if let Some(dir) = params.get("dir").and_then(Value::as_str) {
+                    if let Err(error) = platform::commit_android_folder(std::path::Path::new(dir)) {
+                        self.status_err(crate::i18n::t_dyn(&error).into_owned());
+                        return None;
+                    }
+                }
+            } else {
+                let target = params.get("path").and_then(Value::as_str).map(str::to_string)
+                    .or_else(|| (id == "file.save").then(|| self.s.path.as_ref().map(|p| p.display().to_string())).flatten());
+                if let Some(path) = target {
+                    if let Err(error) = platform::commit_android_file(std::path::Path::new(&path)) {
+                        self.status_err(crate::i18n::t_dyn(&error).into_owned());
+                        return None;
+                    }
                 }
             }
         }
