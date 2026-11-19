@@ -135,7 +135,24 @@ public final class MainActivity extends GameActivity {
         }
         if (copied != expected) return false;
         long actual = queryDocumentSize(destination);
-        return actual < 0 || actual == copied;
+        if (actual == copied) return true;
+        // A few SAF providers report stale metadata immediately after a write. Verify the
+        // document by reading its bytes back instead of treating a stale zero size as success
+        // or failure.
+        return countUriBytes(destination) == copied;
+    }
+
+    private long countUriBytes(Uri uri) {
+        long count = 0;
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            if (input == null) return -1;
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) count += read;
+            return count;
+        } catch (Exception ignored) {
+            return -1;
+        }
     }
 
     /** Returns -1 when the provider does not expose a size. */
