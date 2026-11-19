@@ -1033,7 +1033,8 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     for (index, png) in frames.into_iter().enumerate() {
         let file = format!("frame_{index:06}.png");
         let library_name = format!("Frames/{file}");
-        let id = format!("00000000-0000-0000-0000-{index:012}");
+        let item_id = doc.next_id.saturating_add(index as u64) % 1_000_000_000_000;
+        let id = format!("00000000-0000-0000-0000-{item_id:012}");
         media.push_str(&format!(
             "<DOMBitmapItem name=\"{library_name}\" itemID=\"{id}\" sourceExternalFilepath=\"./LIBRARY/{library_name}\" allowSmoothing=\"true\" useImportedJPEGData=\"false\" compressionType=\"lossless\" originalCompressionType=\"lossless\" quality=\"50\" href=\"{library_name}\" frameRight=\"{}\" frameBottom=\"{}\"/>",
             u64::from(stage.width) * 20,
