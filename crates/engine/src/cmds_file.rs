@@ -1040,11 +1040,21 @@ fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
                 let anicraft_doc::ElementKind::Shape(shape) = &element.kind else {
                     return Err(EngineError::Param(format!("symbols, groups and non-shape elements are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
                 };
-                let Some(anicraft_doc::Paint::Solid(fill)) = &shape.fill else {
-                    return Err(EngineError::Param(format!("editable FLA export currently requires solid fills (layer '{}', frame {})", layer.name, key.start + 1)));
+                let fill = match &shape.fill {
+                    Some(anicraft_doc::Paint::Solid(fill)) if fill.a >= 0.999 => Some(*fill),
+                    None => None,
+                    _ => return Err(EngineError::Param(format!("editable FLA export currently requires opaque solid fills (layer '{}', frame {})", layer.name, key.start + 1))),
                 };
-                if shape.stroke.is_some() || fill.a < 0.999 || shape.warp.is_some() {
-                    return Err(EngineError::Param(format!("strokes, transparency and warped shapes are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
+                let stroke = match &shape.stroke {
+                    Some(stroke) if stroke.profile.is_none() && stroke.style.is_default() && stroke.color.a >= 0.999 && stroke.width.is_finite() && stroke.width > 0.0 => Some(stroke),
+                    None => None,
+                    _ => return Err(EngineError::Param(format!("editable FLA export supports only opaque, uniform solid strokes with default round caps/joins (layer '{}', frame {})", layer.name, key.start + 1))),
+                };
+                if fill.is_none() && stroke.is_none() {
+                    continue;
+                }
+                if shape.warp.is_some() {
+                    return Err(EngineError::Param(format!("warped shapes are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
                 }
                 if shape.fill_rule != anicraft_geom::FillRule::EvenOdd {
                     return Err(EngineError::Param(format!("non-zero fill rules are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
@@ -1097,10 +1107,9 @@ fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
                 if edges.is_empty() { continue; }
                 let m = element.transform.m;
                 let matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", m[0], m[1], m[2], m[3], m[4], m[5]);
-                elements.push_str(&format!(
-                    "<DOMShape>{matrix}<fills><FillStyle index=\"1\"><SolidColor color=\"{}\"/></FillStyle></fills><strokes/><edges>{edges}</edges></DOMShape>",
-                    fill.to_hex().to_ascii_uppercase()
-                ));
+                let fills = fill.map(|colour| format!("<fills><FillStyle index=\"1\"><SolidColor color=\"{}\"/></FillStyle></fills>", colour.to_hex().to_ascii_uppercase())).unwrap_or_else(|| "<fills/>".to_string());
+                let strokes = stroke.map(|line| format!("<strokes><StrokeStyle index=\"1\"><SolidStroke weight=\"{}\" caps=\"round\" joints=\"round\" miterLimit=\"3\"><SolidColor color=\"{}\"/></SolidStroke></StrokeStyle></strokes>", line.width, line.color.to_hex().to_ascii_uppercase())).unwrap_or_else(|| "<strokes/>".to_string());
+                elements.push_str(&format!("<DOMShape>{matrix}{fills}{strokes}<edges>{edges}</edges></DOMShape>"));
                 shape_count += 1;
                 if shape_count > 100_000 {
                     return Err(EngineError::Param("editable FLA export exceeds 100,000 shapes".into()));
