@@ -7,7 +7,7 @@
 
 use crate::prefs::WindowBackend;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Os {
@@ -998,6 +998,19 @@ static ANDROID_PICKER: std::sync::OnceLock<std::sync::Mutex<Option<AndroidPicker
     std::sync::OnceLock::new();
 
 #[cfg(target_os = "android")]
+static ANDROID_VM: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+#[cfg(target_os = "android")]
+static ANDROID_ACTIVITY: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Save the JNI handles owned by AndroidApp so UI actions can call the hosting Activity.
+#[cfg(target_os = "android")]
+pub fn set_android_activity(vm: *mut std::ffi::c_void, activity: *mut std::ffi::c_void) {
+    ANDROID_VM.store(vm, Ordering::Release);
+    ANDROID_ACTIVITY.store(activity, Ordering::Release);
+}
+
+#[cfg(target_os = "android")]
 pub fn file_dialog(_cmd: &str, _title: &str, _default_name: &str) -> Option<PathBuf> {
     None
 }
@@ -1022,11 +1035,16 @@ pub fn start_file_dialog(
     // GameActivity instance in this application, so this call opens the native SAF UI.
     #[allow(unsafe_code)]
     let launched = (|| -> Result<(), String> {
-        let ctx = ndk_context::android_context();
-        let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
+        let vm_ptr = ANDROID_VM.load(Ordering::Acquire);
+        let activity_ptr = ANDROID_ACTIVITY.load(Ordering::Acquire);
+        if vm_ptr.is_null() || activity_ptr.is_null() {
+            return Err("Android Activity is not available".into());
+        }
+        let vm = unsafe { jni::JavaVM::from_raw(vm_ptr.cast()) }
             .map_err(|e| e.to_string())?;
         let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
-        let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
+        // AndroidApp owns this global Activity reference; do not delete it here.
+        let activity = unsafe { jni::objects::JObject::from_raw(activity_ptr.cast()) };
         let title = env.new_string(title).map_err(|e| e.to_string())?;
         env.call_method(
             &activity,
