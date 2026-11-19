@@ -113,6 +113,14 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
         if line.profile.is_some() || line.style.dash.is_some() {
             return Err(EngineError::Format("native FLA export currently supports uniform solid strokes only; variable-width and dashed strokes are not yet supported".into()));
         }
+        if !line.width.is_finite() || line.width <= 0.0 {
+            return Err(EngineError::Format("native FLA export requires a finite, positive stroke width".into()));
+        }
+        if !line.style.miter_limit.is_finite()
+            || !(anicraft_doc::MIN_MITER_LIMIT..=anicraft_doc::MAX_MITER_LIMIT).contains(&line.style.miter_limit)
+        {
+            return Err(EngineError::Format("native FLA export requires a finite miter limit between 1 and 100".into()));
+        }
         stroke_index = 1;
         let c = line.color.sanitized();
         let caps = match line.style.cap { anicraft_doc::Cap::Butt => "none", anicraft_doc::Cap::Round => "round", anicraft_doc::Cap::Square => "square" };
@@ -251,6 +259,20 @@ mod tests {
         }));
         let error = edge_data(&Path { cmds }).expect_err("oversized paths must be rejected");
         assert!(error.to_string().contains("100,000-command safety limit"));
+    }
+
+    #[test]
+    fn invalid_stroke_dimensions_are_rejected() {
+        let mut shape = Shape::filled(
+            Path::rect(0.0, 0.0, 10.0, 10.0),
+            Paint::Solid(anicraft_doc::Rgba::hex(0x336699)),
+        );
+        let mut stroke = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0);
+        stroke.width = f32::NAN;
+        shape.stroke = Some(stroke);
+        assert!(shape_xml(&shape, anicraft_geom::Affine::IDENTITY)
+            .expect_err("non-finite stroke widths must be rejected")
+            .to_string().contains("positive stroke width"));
     }
 
     #[test]
