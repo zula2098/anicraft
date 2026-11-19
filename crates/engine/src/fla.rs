@@ -24,6 +24,10 @@ fn n(v: f32) -> String {
     if v == 0.0 { "0".into() } else { format!("{v:.4}") }
 }
 
+fn ng(v: f32) -> String {
+    if v == 0.0 { "0".into() } else { format!("{v:.8}") }
+}
+
 fn point(v: anicraft_geom::Vec2) -> Result<String> {
     let x = v.x * TWIPS;
     let y = v.y * TWIPS;
@@ -149,7 +153,7 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
                     return Err(EngineError::Format("gradient transform is not finite".into()));
                 }
                 let [a, b, c, d, tx, ty] = frame.m;
-                let matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", n(a / 819.2), n(b / 819.2), n(c / 819.2), n(d / 819.2), n(tx), n(ty));
+                let matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", ng(a / 819.2), ng(b / 819.2), ng(c / 819.2), ng(d / 819.2), n(tx), n(ty));
                 let mut entries = String::new();
                 for stop in stops {
                     if !stop.offset.is_finite() {
