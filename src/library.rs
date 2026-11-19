@@ -789,6 +789,11 @@ fn properties(app: &mut App, ui: &mut egui::Ui) {
     match item {
         LibraryItem::Symbol(id) => {
             let Some((kind, linkage)) = app.s.doc.symbol(id).map(|s| (s.kind, s.linkage.clone())) else { return };
+            // Make renaming discoverable on touch devices too; the context menu and F2
+            // remain available, but are not obvious on Android.
+            if ui.button(tr!("Rename symbol…")).clicked() {
+                start_rename(app, LibraryEntry::Item(item));
+            }
             crate::theme::form_row(ui, crate::theme::FORM_LABEL_DOCK, tr!("Type"), |ui| {
                 egui::ComboBox::from_id_salt("lib_symkind")
                     .width(crate::theme::fit(ui, 150.0))
