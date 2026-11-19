@@ -308,6 +308,7 @@ const HELP: &str = "anicraft [file.anicraft|file.fla|file.xfl] [--version] [--sc
 /// Unlike the desktop command-line path, Android starts with the sample document and
 /// delegates file access to the platform document picker in a later integration step.
 #[cfg(target_os = "android")]
+#[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     let options = eframe::NativeOptions {
