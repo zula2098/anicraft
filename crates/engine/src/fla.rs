@@ -702,6 +702,33 @@ mod tests {
 
     #[test]
     #[allow(clippy::expect_used)]
+    fn editable_vector_package_round_trips_mask_layers_and_parent_links() {
+        let mut doc = Document::default();
+        let timeline = doc.timeline_mut(0);
+        let mask_id = timeline.layers[0].id;
+        Arc::make_mut(&mut timeline.layers[0]).kind = LayerKind::Mask;
+        let mut child = anicraft_doc::Layer::new(anicraft_doc::LayerId(9902), "Masked artwork");
+        child.parent = Some(mask_id);
+        child.keyframe_mut(0).expect("child layer has a first keyframe").elements.push(Arc::new(Element {
+            id: ElementId(9903),
+            name: "masked shape".into(),
+            transform: anicraft_geom::Affine::IDENTITY,
+            color: anicraft_doc::ColorEffect::default(),
+            kind: ElementKind::Shape(Shape::filled(Path::rect(0.0, 0.0, 16.0, 16.0), Paint::Solid(anicraft_doc::Rgba::hex(0x336699)))),
+        }));
+        timeline.layers.push(Arc::new(child));
+        let (bytes, _, _) = export(&doc, FsPath::new("mask-roundtrip.fla")).expect("mask export should succeed");
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open mask package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        let layers = &opened.timeline(0).layers;
+        assert_eq!(layers.len(), 2);
+        assert_eq!(layers[0].kind, LayerKind::Mask);
+        assert_eq!(layers[1].parent, Some(layers[0].id));
+        assert_eq!(layers[1].keyframe_at(0).map(|key| key.elements.len()), Some(1));
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
     fn editable_vector_package_round_trips_symbols_and_bitmap_fills() {
         let mut doc = Document::default();
         let symbol_id = anicraft_doc::SymbolId(700);
