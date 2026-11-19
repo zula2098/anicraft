@@ -154,6 +154,14 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
     Ok(format!("<DOMShape>{matrix}{fill}{stroke}<edges><Edge{attrs} edges=\"{edges}\"/></edges></DOMShape>"))
 }
 
+fn push_bounded(out: &mut String, part: &str) -> Result<()> {
+    if out.len().saturating_add(part.len()) > MAX_VECTOR_XML_BYTES {
+        return Err(EngineError::Format("native FLA document XML exceeds the 64 MB safety limit".into()));
+    }
+    out.push_str(part);
+    Ok(())
+}
+
 fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> Result<String> {
     let mut out = String::from("<layers>");
     // Both the document model and XFL store the frontmost layer first.
@@ -182,18 +190,21 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> 
                 if *total_shapes > MAX_VECTOR_SHAPES {
                     return Err(EngineError::Format("native FLA export exceeds the 100,000-shape safety limit".into()));
                 }
-                elements.push_str(&shape_xml(shape, element.transform)?);
+                let shape = shape_xml(shape, element.transform)?;
+                push_bounded(&mut elements, &shape)?;
             }
-            elements.push_str("</elements>");
+            push_bounded(&mut elements, "</elements>")?;
             let label = if key.label.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&key.label)) };
-            frames.push_str(&format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}>{elements}</DOMFrame>", key.start, key.duration.max(1)));
+            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}>{elements}</DOMFrame>", key.start, key.duration.max(1));
+            push_bounded(&mut frames, &frame_xml)?;
         }
-        frames.push_str("</frames>");
+        push_bounded(&mut frames, "</frames>")?;
         let visible = if layer.visible { "true" } else { "false" };
         let locked = if layer.locked { "true" } else { "false" };
-        out.push_str(&format!("<DOMLayer name=\"{}\" color=\"{}\" visible=\"{}\" locked=\"{}\">{frames}</DOMLayer>", xml(&layer.name), layer.color.to_hex(), visible, locked));
+        let layer_xml = format!("<DOMLayer name=\"{}\" color=\"{}\" visible=\"{}\" locked=\"{}\">{frames}</DOMLayer>", xml(&layer.name), layer.color.to_hex(), visible, locked);
+        push_bounded(&mut out, &layer_xml)?;
     }
-    out.push_str("</layers>");
+    push_bounded(&mut out, "</layers>")?;
     Ok(out)
 }
 
@@ -223,9 +234,10 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     let mut timelines = String::from("<timelines>");
     for scene in &doc.scenes {
         let layers = timeline_xml(&scene.timeline, &mut shapes)?;
-        timelines.push_str(&format!("<DOMTimeline name=\"{}\">{layers}</DOMTimeline>", xml(&scene.name)));
+        let timeline = format!("<DOMTimeline name=\"{}\">{layers}</DOMTimeline>", xml(&scene.name));
+        push_bounded(&mut timelines, &timeline)?;
     }
-    timelines.push_str("</timelines>");
+    push_bounded(&mut timelines, "</timelines>")?;
     if stage.background.a != 1.0 {
         return Err(EngineError::Format("native FLA export does not yet support a translucent stage background".into()));
     }
