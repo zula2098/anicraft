@@ -196,10 +196,11 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
 mod tests {
     use super::*;
     use anicraft_doc::{Element, ElementId, Shape};
-    use anicraft_geom::{Path, Vec2};
+    use anicraft_geom::Path;
     use std::sync::Arc;
 
     #[test]
+    #[allow(clippy::expect_used)]
     fn editable_vector_package_round_trips_through_xfl_importer() {
         let mut doc = Document::default();
         let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
@@ -226,6 +227,5 @@ mod tests {
         assert_eq!(opened.frame_count(), 4);
         let imported = opened.timeline(0).layers.first().and_then(|l| l.keyframe_at(0));
         assert_eq!(imported.map(|k| k.elements.len()), Some(1));
-        let _ = Vec2::ZERO;
     }
 }
