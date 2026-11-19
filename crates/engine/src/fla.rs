@@ -289,7 +289,8 @@ mod tests {
         let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
         key.start = MAX_VECTOR_FRAMES;
         key.duration = 2;
-        let error = export(&doc, FsPath::new("too-many-frames.fla"))
+        let mut shapes = 0;
+        let error = timeline_xml(&doc.scenes[0].timeline, &mut shapes)
             .expect_err("keyframe ranges beyond the export limit must be rejected");
         assert!(error.to_string().contains("limited to 10,000 frames"));
     }
