@@ -190,3 +190,42 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
     Ok((bytes, frames, shapes))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anicraft_doc::{Element, ElementId, Shape};
+    use anicraft_geom::{Path, Vec2};
+    use std::sync::Arc;
+
+    #[test]
+    fn editable_vector_package_round_trips_through_xfl_importer() {
+        let mut doc = Document::default();
+        let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let key = layer.keyframe_mut(0).expect("new layer has a first keyframe");
+        key.duration = 4;
+        key.elements.push(Arc::new(Element {
+            id: ElementId(9001),
+            name: "editable rectangle".into(),
+            transform: anicraft_geom::Affine::translate(12.0, 8.0),
+            color: anicraft_doc::ColorEffect::default(),
+            kind: ElementKind::Shape(Shape::filled(
+                Path::rect(0.0, 0.0, 40.0, 24.0),
+                Paint::Solid(anicraft_doc::Rgba::hex(0xD9452B)),
+            )),
+        }));
+
+        let (bytes, frames, shapes) = export(&doc, FsPath::new("roundtrip.fla")).expect("export should succeed");
+        assert_eq!(frames, 4);
+        assert_eq!(shapes, 1);
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        assert_eq!(opened.stage.width, doc.stage.width);
+        assert_eq!(opened.stage.height, doc.stage.height);
+        assert_eq!(opened.frame_count(), 4);
+        let imported = opened.timeline(0).layers.first().and_then(|l| l.keyframe_at(0));
+        assert_eq!(imported.map(|k| k.elements.len()), Some(1));
+        let _ = Vec2::ZERO;
+    }
+}
