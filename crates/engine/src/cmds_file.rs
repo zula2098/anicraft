@@ -997,7 +997,10 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     let fps = format!("{:.3}", stage.fps);
     let mut media = String::new();
     let mut timeline_frames = String::new();
-    let mut files = Vec::with_capacity(frames.len() + 3);
+    // Animate requires the XFL mimetype entry to be the first local ZIP entry.
+    // Keep it uncompressed (the package writer stores every entry) and before all assets.
+    let mut files = vec![(PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec())];
+    files.reserve(frames.len() + 2);
     for (index, png) in frames.into_iter().enumerate() {
         let file = format!("frame_{index:06}.png");
         let library_name = format!("Frames/{file}");
@@ -1019,7 +1022,6 @@ fn export_fla(s: &mut Session, p: &Value) -> Result<Value> {
     files.push((PathBuf::from("DOMDocument.xml"), xml.into_bytes()));
     let marker_name = path.file_stem().and_then(|name| name.to_str()).filter(|name| !name.is_empty()).unwrap_or("AniCraft");
     files.push((PathBuf::from(format!("{marker_name}.xfl")), b"PROXY-CS5".to_vec()));
-    files.push((PathBuf::from("mimetype"), b"application/vnd.adobe.xfl".to_vec()));
     let bytes = crate::publish::zip(&files).map_err(EngineError::Format)?;
     write_fla_package(&path, &bytes)?;
     Ok(json!({
