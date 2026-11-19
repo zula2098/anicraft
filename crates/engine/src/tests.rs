@@ -189,6 +189,7 @@ fn editable_fla_export_round_trips_a_solid_vector_shape() {
         let element = std::sync::Arc::make_mut(&mut key.elements[0]);
         if let anicraft_doc::ElementKind::Shape(shape) = &mut element.kind {
             shape.fill_rule = anicraft_geom::FillRule::EvenOdd;
+            shape.stroke = Some(anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0xff2200), 3.0));
         } else {
             panic!("rectangle should be a vector shape");
         }
@@ -201,7 +202,8 @@ fn editable_fla_export_round_trips_a_solid_vector_shape() {
     let (imported, report) = anicraft_xfl::import_fla(&bytes).unwrap();
     assert_eq!(imported.stage.width, s.doc.stage.width);
     assert_eq!(imported.timeline(0).layers.len(), 1);
-    assert_eq!(imported.timeline(0).layers[0].keyframes[0].elements.len(), 1);
+    assert_eq!(imported.timeline(0).layers[0].keyframes[0].elements.len(), 2, "fill and stroke should import as editable vector elements");
+    assert!(imported.timeline(0).layers[0].keyframes[0].elements.iter().any(|element| matches!(&element.kind, anicraft_doc::ElementKind::Shape(shape) if shape.stroke.as_ref().is_some_and(|stroke| (stroke.width - 3.0).abs() < 0.01))));
     assert!(report.skipped.is_empty(), "{}", report.summary());
     let _ = std::fs::remove_file(path);
 }
