@@ -314,6 +314,10 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     platform::set_android_activity(app.vm_as_ptr(), app.activity_as_ptr());
     let options = eframe::NativeOptions {
         android_app: Some(app),
+        // Qualcomm's WGPU path leaks several gigabytes of KGSL memory on some
+        // Android devices. The Android build has no GPU stage renderer, so use
+        // Glow/OpenGL for the egui UI as well.
+        renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
     let session = Session::new(anicraft_engine::doc::sample::demo());
