@@ -3606,7 +3606,7 @@ impl App {
                 platform::pick_file(id);
                 return;
             }
-            if is_file && self.prefs.native_dialogs && self.shot.is_none() && !platform::WEB {
+            if is_file && (self.prefs.native_dialogs || cfg!(target_os = "android")) && self.shot.is_none() && !platform::WEB {
                 // The platform's own dialog, shown at the end of the frame (it needs the
                 // window); the answer runs the command in a later frame. One at a time.
                 self.playing = false;
