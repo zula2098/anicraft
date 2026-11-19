@@ -1,6 +1,6 @@
 # Command reference
 
-Everything you can do in AniCraft is a command: the menus, the shortcuts, the command palette (**Ctrl+K**, macOS **⌘K**), `anicraft-cli` and AI assistants over MCP all run the same 381 commands, listed here by menu. The id is what scripts and [working headless](../working-headless.md) use; the parameters are what a command takes as JSON. Commands that change the document are one undo step each. Your own shortcuts (**Help › Keyboard Shortcuts**) replace the defaults shown here; see the [shortcut reference](shortcuts.md).
+Everything you can do in AniCraft is a command: the menus, the shortcuts, the command palette (**Ctrl+K**, macOS **⌘K**), `anicraft-cli` and AI assistants over MCP all run the same 383 commands, listed here by menu. The id is what scripts and [working headless](../working-headless.md) use; the parameters are what a command takes as JSON. Commands that change the document are one undo step each. Your own shortcuts (**Help › Keyboard Shortcuts**) replace the defaults shown here; see the [shortcut reference](shortcuts.md).
 
 This page is generated from the command registry, so it always matches the version of AniCraft it came with.
 
@@ -26,6 +26,10 @@ This page is generated from the command registry, so it always matches the versi
   Parameters: `{path (.svg, .png, .jpg; or a .wav, .ogg or .mp3 sound: onto a new layer at the playhead), x?, y? (top-left on the stage; default: centred), cx?, cy? (centred on that point instead), layer? (new (default) | active: a one-layer drawing goes into the active layer's keyframe at the playhead)}`
 - **Export Frame as SVG…** `file.export_svg` · File › Export
   Parameters: `{path, frame? (in the current scene), confirm?}`
+- **Export FLA (editable vectors, beta)…** `file.export_fla_vector` · File › Export
+  Parameters: `{path (.fla): editable vector subset; plain shapes, layers and keyframes}`
+- **Export FLA (rasterized)…** `file.export_fla` · File › Export
+  Parameters: `{path (.fla), from?, to? (movie frames: every scene in order)}`
 - **Export Video…** `file.export_video` · File › Export
   Parameters: `{path (.mp4 or .webm), from?, to? (movie frames), scale?, audio? (default true: the movie's sounds, Opus in WebM, AAC in MP4), ffmpeg? (path; else ANICRAFT_FFMPEG, else ffmpeg on the PATH), confirm?}`
 - **Export Sprite Sheet…** `file.export_sprite_sheet` · File › Export
