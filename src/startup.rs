@@ -426,7 +426,7 @@ pub fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
 
 /// Every attempt failed: the log says why, and a system message box says so (the window
 /// can't), with where the log is.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 pub fn give_up(why: &str) {
     line(&format!("no way to open the window worked; last: {why}"));
     let log = log_path().map_or_else(String::new, |p| p.display().to_string());
