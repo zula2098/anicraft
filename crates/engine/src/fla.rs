@@ -138,10 +138,33 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
                 }
                 let [a,b,c,d,tx,ty] = matrix.m;
                 let clipped = if *repeat { "false" } else { "true" };
-                format!("<BitmapFill bitmapPath=\"{}\" bitmapIsClipped=\"{}\"><matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix></BitmapFill>", xml(name), clipped, n(a * TWIPS), n(b * TWIPS), n(c * TWIPS), n(d * TWIPS), n(tx * TWIPS), n(ty * TWIPS))
+                format!("<BitmapFill bitmapPath=\"{}\" bitmapIsClipped=\"{}\"><matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix></BitmapFill>", xml(name), clipped, n(a * TWIPS), n(b * TWIPS), n(c * TWIPS), n(d * TWIPS), n(tx), n(ty))
             }
-            Paint::Linear { .. } | Paint::Radial { .. } => {
-                return Err(EngineError::Format("native FLA export does not yet support gradient fills".into()));
+            Paint::Linear { stops, spread, linear_rgb, .. } | Paint::Radial { stops, spread, linear_rgb, .. } => {
+                if stops.is_empty() || stops.len() > anicraft_doc::MAX_GRADIENT_STOPS {
+                    return Err(EngineError::Format("gradient fills need between 1 and 15 colour stops".into()));
+                }
+                let frame = paint.frame(None).ok_or_else(|| EngineError::Format("gradient transform is unavailable".into()))?;
+                if !frame.is_finite() {
+                    return Err(EngineError::Format("gradient transform is not finite".into()));
+                }
+                let [a, b, c, d, tx, ty] = frame.m;
+                let matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", n(a / 819.2), n(b / 819.2), n(c / 819.2), n(d / 819.2), n(tx), n(ty));
+                let mut entries = String::new();
+                for stop in stops {
+                    if !stop.offset.is_finite() {
+                        return Err(EngineError::Format("gradient stop positions must be finite".into()));
+                    }
+                    let color = stop.color.sanitized();
+                    push_bounded(&mut entries, &format!("<GradientEntry color=\"{}\" alpha=\"{}\" ratio=\"{}\"/>", color.to_hex(), n(color.a), n(stop.offset.clamp(0.0, 1.0))))?;
+                }
+                let spread_attr = if *spread == anicraft_doc::Spread::Pad { String::new() } else { format!(" spreadMethod=\"{}\"", spread.key()) };
+                let interpolation = if *linear_rgb { " interpolationMethod=\"linearRGB\"" } else { "" };
+                match paint {
+                    Paint::Linear { .. } => format!("<LinearGradient{spread_attr}{interpolation}>{matrix}{entries}</LinearGradient>"),
+                    Paint::Radial { focal, .. } => format!("<RadialGradient{spread_attr}{interpolation} focalPointRatio=\"{}\">{matrix}{entries}</RadialGradient>", n(*focal)),
+                    _ => return Err(EngineError::Format("invalid gradient paint".into())),
+                }
             }
         };
         fill = format!("<fills><FillStyle index=\"1\">{definition}</FillStyle></fills>");
