@@ -988,9 +988,15 @@ pub fn file_dialog(cmd: &str, title: &str, default_name: &str) -> Option<PathBuf
 #[cfg(not(target_arch = "wasm32"))]
 pub type FileAnswer = std::sync::mpsc::Receiver<Option<PathBuf>>;
 
-/// Android file picking is not wired up yet. Keep the editor buildable while the
-/// Storage Access Framework bridge is implemented; callers can detect the unavailable
-/// dialog through the `None` result.
+/// Android's Storage Access Framework picker returns a cache file that the existing
+/// path-based file commands can open without broad storage permissions.
+#[cfg(target_os = "android")]
+type AndroidPickerSender = std::sync::mpsc::Sender<Option<PathBuf>>;
+
+#[cfg(target_os = "android")]
+static ANDROID_PICKER: std::sync::OnceLock<std::sync::Mutex<Option<AndroidPickerSender>>> =
+    std::sync::OnceLock::new();
+
 #[cfg(target_os = "android")]
 pub fn file_dialog(_cmd: &str, _title: &str, _default_name: &str) -> Option<PathBuf> {
     None
@@ -998,13 +1004,69 @@ pub fn file_dialog(_cmd: &str, _title: &str, _default_name: &str) -> Option<Path
 
 #[cfg(target_os = "android")]
 pub fn start_file_dialog(
-    _cmd: &str,
-    _title: &str,
+    cmd: &str,
+    title: &str,
     _default_name: &str,
     _window: &eframe::Frame,
     _ui: eframe::egui::Context,
 ) -> Option<FileAnswer> {
-    None
+    if !reads_file(cmd) {
+        return None;
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let pending = ANDROID_PICKER.get_or_init(|| std::sync::Mutex::new(None));
+    *pending.lock().ok()? = Some(tx);
+
+    // android-activity initializes ndk-context before android_main. The context is the
+    // GameActivity instance in this application, so this call opens the native SAF UI.
+    #[allow(unsafe_code)]
+    let launched = (|| -> Result<(), String> {
+        let ctx = ndk_context::android_context();
+        let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
+            .map_err(|e| e.to_string())?;
+        let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
+        let activity = unsafe { jni::objects::JObject::from_raw(ctx.context().cast()) };
+        let title = env.new_string(title).map_err(|e| e.to_string())?;
+        env.call_method(
+            &activity,
+            "openDocument",
+            "(Ljava/lang/String;)V",
+            &[jni::objects::JValue::Object(&title)],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+
+    if launched.is_err() {
+        if let Ok(mut slot) = pending.lock() {
+            slot.take();
+        }
+        return None;
+    }
+    Some(rx)
+}
+
+/// Called by MainActivity after copying the selected content URI into the app cache.
+#[cfg(target_os = "android")]
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_anicraft_app_MainActivity_nativeOnFilePicked(
+    mut env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    path: jni::objects::JString,
+) {
+    let path = env
+        .get_string(&path)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let pending = ANDROID_PICKER.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(mut slot) = pending.lock() {
+        if let Some(tx) = slot.take() {
+            let answer = (!path.is_empty()).then(|| PathBuf::from(path));
+            let _ = tx.send(answer);
+        }
+    }
 }
 
 #[cfg(target_os = "android")]
