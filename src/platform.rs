@@ -948,6 +948,7 @@ pub fn filters(cmd: &str) -> (&'static str, &'static [&'static str]) {
         "file.export_webp" => (tr_noop!("Animated WebP"), &["webp"]),
         "file.export_svg" => (tr_noop!("SVG image"), &["svg"]),
         "file.export_fla" => (tr_noop!("Animate FLA document (rasterized)"), &["fla"]),
+        "file.export_fla_vector" => (tr_noop!("Animate FLA document (editable vectors)"), &["fla"]),
         "file.export_lottie" => (tr_noop!("Lottie animation"), &["json"]),
         "file.export_html" => (tr_noop!("Web page"), &["html", "htm"]),
         "file.import" => (tr_noop!("Drawing, image or sound"), &["svg", "png", "jpg", "jpeg", "wav", "ogg", "mp3"]),
