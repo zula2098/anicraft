@@ -272,8 +272,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
     // ---- camera input -------------------------------------------------------------------
     if resp.hovered() {
-        let (zoom_delta, scroll) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta));
-        if let Some(p) = resp.hover_pos() {
+        // Touchscreens report a two-finger gesture separately from pointer drags. Keep
+        // one-finger drags for the active tool; two fingers always navigate the stage.
+        let (zoom_delta, scroll, multi_touch) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.multi_touch()));
+        if let Some(touch) = multi_touch {
+            let anchor = resp.hover_pos().unwrap_or(canvas.center());
+            if (touch.zoom_delta - 1.0).abs() > 1e-4 {
+                app.zoom_about(canvas, anchor, app.view.zoom * touch.zoom_delta);
+            }
+            if touch.translation_delta != egui::Vec2::ZERO {
+                app.view.pan += touch.translation_delta;
+            }
+        } else if let Some(p) = resp.hover_pos() {
             if (zoom_delta - 1.0).abs() > 1e-4 {
                 let z = app.view.zoom * zoom_delta;
                 app.zoom_about(canvas, p, z);
