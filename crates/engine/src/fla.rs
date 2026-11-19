@@ -117,7 +117,7 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
             return Err(EngineError::Format("native FLA export requires a finite, positive stroke width".into()));
         }
         if !line.style.miter_limit.is_finite()
-            || !(anicraft_doc::MIN_MITER_LIMIT..=anicraft_doc::MAX_MITER_LIMIT).contains(&line.style.miter_limit)
+            || !(anicraft_doc::stroke_style::MIN_MITER_LIMIT..=anicraft_doc::stroke_style::MAX_MITER_LIMIT).contains(&line.style.miter_limit)
         {
             return Err(EngineError::Format("native FLA export requires a finite miter limit between 1 and 100".into()));
         }
