@@ -311,6 +311,7 @@ const HELP: &str = "anicraft [file.anicraft|file.fla|file.xfl] [--version] [--sc
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
 pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
+    platform::set_android_activity(app.vm_as_ptr(), app.activity_as_ptr());
     let options = eframe::NativeOptions {
         android_app: Some(app),
         ..Default::default()
