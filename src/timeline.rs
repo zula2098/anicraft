@@ -1305,7 +1305,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 _ => {}
             }
         }
-        if cr.drag_stopped()
+        if (cr.drag_stopped() || (app.tl_drag != TlDrag::None && !ui.input(|i| i.pointer.primary_down())))
             && let TlDrag::Span { layer: lid, start, end, to } = app.tl_drag
         {
             // One step: the span's new length, its motion keys stretched in proportion (as
@@ -1323,7 +1323,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             }
             app.tl_drag = TlDrag::None;
         }
-        if cr.drag_stopped() {
+        if cr.drag_stopped() || (app.tl_drag != TlDrag::None && !ui.input(|i| i.pointer.primary_down())) {
             if let (TlDrag::Move { by, rows_by, .. }, Some(sel)) = (app.tl_drag, app.frame_sel)
                 && (by != 0 || rows_by != 0)
             {
@@ -1544,7 +1544,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         let set = if sr.double_clicked() {
             app.tl_layer_w_drag = None;
             Some(crate::prefs::LAYER_W_DEFAULT)
-        } else if sr.drag_stopped() {
+        } else if sr.drag_stopped() || (app.tl_layer_w_drag.is_some() && !ui.input(|i| i.pointer.primary_down())) {
             app.tl_layer_w_drag.take()
         } else {
             None
