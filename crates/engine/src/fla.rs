@@ -225,7 +225,7 @@ fn sound_library_name(doc: &Document, sound: &anicraft_doc::Sound) -> String {
     let entry = doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Sound(sound.id)));
     let mut path = PathBuf::from(entry);
     path.set_extension(extension);
-    path.to_string_lossy().replace('\\\\', "/")
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> {
