@@ -25,7 +25,7 @@ fn point(v: anicraft_geom::Vec2) -> String {
     format!("{} {}", n(v.x * TWIPS), n(v.y * TWIPS))
 }
 
-fn edge_data(path: &Path, _fill: bool) -> Result<String> {
+fn edge_data(path: &Path) -> Result<String> {
     let mut out = String::new();
     let mut current = None;
     let mut start = None;
@@ -118,7 +118,7 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
         let [a,b,c,d,tx,ty] = transform.m;
         matrix = format!("<matrix><Matrix a=\"{}\" b=\"{}\" c=\"{}\" d=\"{}\" tx=\"{}\" ty=\"{}\"/></matrix>", n(a), n(b), n(c), n(d), n(tx), n(ty));
     }
-    let edges = edge_data(&shape.path, fill_index != 0)?;
+    let edges = edge_data(&shape.path)?;
     let attrs = match (fill_index, stroke_index) {
         (1,1) => " fillStyle1=\"1\" strokeStyle=\"1\"",
         (1,0) => " fillStyle1=\"1\"",
@@ -128,7 +128,7 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
     Ok(format!("<DOMShape>{matrix}{fill}{stroke}<edges><Edge{attrs} edges=\"{edges}\"/></edges></DOMShape>"))
 }
 
-fn timeline_xml(doc: &Document, timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> Result<String> {
+fn timeline_xml(timeline: &anicraft_doc::Timeline, total_shapes: &mut usize) -> Result<String> {
     let mut out = String::from("<layers>");
     // Both the document model and XFL store the frontmost layer first.
     for layer in &timeline.layers {
@@ -165,7 +165,6 @@ fn timeline_xml(doc: &Document, timeline: &anicraft_doc::Timeline, total_shapes:
         out.push_str(&format!("<DOMLayer name=\"{}\" color=\"{}\" visible=\"{}\" locked=\"{}\">{frames}</DOMLayer>", xml(&layer.name), layer.color.to_hex(), visible, locked));
     }
     out.push_str("</layers>");
-    let _ = doc;
     Ok(out)
 }
 
@@ -181,7 +180,7 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
     let mut shapes = 0usize;
     let mut timelines = String::from("<timelines>");
     for scene in &doc.scenes {
-        let layers = timeline_xml(doc, &scene.timeline, &mut shapes)?;
+        let layers = timeline_xml(&scene.timeline, &mut shapes)?;
         timelines.push_str(&format!("<DOMTimeline name=\"{}\">{layers}</DOMTimeline>", xml(&scene.name)));
     }
     timelines.push_str("</timelines>");
