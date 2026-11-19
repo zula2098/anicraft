@@ -155,7 +155,11 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine) -> R
 }
 
 fn push_bounded(out: &mut String, part: &str) -> Result<()> {
-    if out.len().saturating_add(part.len()) > MAX_VECTOR_XML_BYTES {
+    push_bounded_to(out, part, MAX_VECTOR_XML_BYTES)
+}
+
+fn push_bounded_to(out: &mut String, part: &str, limit: usize) -> Result<()> {
+    if out.len().saturating_add(part.len()) > limit {
         return Err(EngineError::Format("native FLA document XML exceeds the 64 MB safety limit".into()));
     }
     out.push_str(part);
@@ -263,6 +267,15 @@ mod tests {
     use anicraft_doc::{Element, ElementId, Shape};
     use anicraft_geom::Path;
     use std::sync::Arc;
+
+    #[test]
+    fn xml_budget_is_enforced_before_appending() {
+        let mut xml = String::from("1234");
+        push_bounded_to(&mut xml, "56", 5).expect_err("append must exceed the configured budget");
+        assert_eq!(xml, "1234", "failed append must not partially mutate the output");
+        push_bounded_to(&mut xml, "5", 5).expect("append within budget should succeed");
+        assert_eq!(xml, "12345");
+    }
 
     #[test]
     fn invalid_stage_dimensions_are_rejected() {
