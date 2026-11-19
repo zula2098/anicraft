@@ -216,13 +216,16 @@ fn push_bounded_to(out: &mut String, part: &str, limit: usize) -> Result<()> {
     Ok(())
 }
 
-fn sound_library_name(sound: &anicraft_doc::Sound) -> String {
+fn sound_library_name(doc: &Document, sound: &anicraft_doc::Sound) -> String {
     let extension = match sound.format {
         SoundFormat::Wav => "wav",
         SoundFormat::Ogg => "ogg",
         SoundFormat::Mp3 => "mp3",
     };
-    format!("Sounds/sound_{:012}.{}", sound.id.0, extension)
+    let entry = doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Sound(sound.id)));
+    let mut path = PathBuf::from(entry);
+    path.set_extension(extension);
+    path.to_string_lossy().replace('\\\\', "/")
 }
 
 fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> {
@@ -232,7 +235,7 @@ fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, Vec<u8>)>)> 
         if sound.data.is_empty() {
             return Err(EngineError::Format(format!("sound '{}' has no audio data", sound.name)));
         }
-        let name = sound_library_name(sound);
+        let name = sound_library_name(doc, sound);
         let id = format!("00000000-0000-0000-0000-{:012}", sound.id.0 % 1_000_000_000_000);
         let rate_khz = ((sound.rate + 500) / 1000).max(1);
         let channels = if sound.channels == 1 { "Mono" } else { "Stereo" };
@@ -251,7 +254,7 @@ fn frame_sound_xml(key: &anicraft_doc::Keyframe, doc: &Document) -> Result<(Stri
     let sound = doc.sound(frame_sound.sound).ok_or_else(|| {
         EngineError::Format(format!("keyframe references missing sound {}", frame_sound.sound.0))
     })?;
-    let name = sound_library_name(sound);
+    let name = sound_library_name(doc, sound);
     let mut attrs = format!(" soundName=\"{}\" soundSync=\"{}\"", xml(&name), frame_sound.sync.key());
     if frame_sound.looping {
         attrs.push_str(" soundLoopMode=\"loop\"");
