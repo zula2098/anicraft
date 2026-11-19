@@ -1056,7 +1056,7 @@ fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
                 if shape.warp.is_some() {
                     return Err(EngineError::Param(format!("warped shapes are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
                 }
-                if shape.fill_rule != anicraft_geom::FillRule::EvenOdd {
+                if fill.is_some() && shape.fill_rule != anicraft_geom::FillRule::EvenOdd {
                     return Err(EngineError::Param(format!("non-zero fill rules are not yet supported (layer '{}', frame {})", layer.name, key.start + 1)));
                 }
                 let mut edges = String::new();
@@ -1067,7 +1067,7 @@ fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
                     match *cmd {
                         anicraft_geom::PathCmd::MoveTo(point) => {
                             if !current.is_empty() {
-                                edges.push_str(&format!("<Edge fillStyle1=\"1\" edges=\"{}\"/>", current));
+                                edges.push_str(&format!("<Edge fillStyle1=\"{}\" strokeStyle=\"{}\" edges=\"{}\"/>", if fill.is_some() { 1 } else { 0 }, if stroke.is_some() { 1 } else { 0 }, current));
                             }
                             current = format!("!{} {}", point.x * 20.0, point.y * 20.0);
                             start = Some(point);
@@ -1093,7 +1093,7 @@ fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
                                 }
                             }
                             if !current.is_empty() {
-                                edges.push_str(&format!("<Edge fillStyle1=\"1\" edges=\"{}\"/>", current));
+                                edges.push_str(&format!("<Edge fillStyle1=\"{}\" strokeStyle=\"{}\" edges=\"{}\"/>", if fill.is_some() { 1 } else { 0 }, if stroke.is_some() { 1 } else { 0 }, current));
                             }
                             current.clear();
                             start = None;
@@ -1102,7 +1102,7 @@ fn export_fla_vectors(s: &mut Session, p: &Value) -> Result<Value> {
                     }
                 }
                 if !current.is_empty() {
-                    edges.push_str(&format!("<Edge fillStyle1=\"1\" edges=\"{}\"/>", current));
+                    edges.push_str(&format!("<Edge fillStyle1=\"{}\" strokeStyle=\"{}\" edges=\"{}\"/>", if fill.is_some() { 1 } else { 0 }, if stroke.is_some() { 1 } else { 0 }, current));
                 }
                 if edges.is_empty() { continue; }
                 let m = element.transform.m;
