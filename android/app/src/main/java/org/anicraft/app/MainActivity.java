@@ -48,7 +48,11 @@ public final class MainActivity extends GameActivity {
         runOnUiThread(() -> {
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
+            String extension = "";
+            int dot = defaultName == null ? -1 : defaultName.lastIndexOf('.');
+            if (dot >= 0 && dot + 1 < defaultName.length()) extension = defaultName.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+            String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            intent.setType(mime == null ? "*/*" : mime);
             intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 | Intent.FLAG_GRANT_READ_URI_PERMISSION
                 | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
@@ -103,7 +107,7 @@ public final class MainActivity extends GameActivity {
                 DocumentFile output = target.createFile(mime, child.getName());
                 if (output == null) return false;
                 try (InputStream input = new java.io.FileInputStream(child);
-                     OutputStream stream = getContentResolver().openOutputStream(output.getUri(), "wt")) {
+                     OutputStream stream = getContentResolver().openOutputStream(output.getUri(), "w")) {
                     if (stream == null) return false;
                     byte[] buffer = new byte[64 * 1024];
                     int count;
@@ -130,7 +134,7 @@ public final class MainActivity extends GameActivity {
         File source = new File(cachedPath);
         if (!source.isFile()) return false;
         try (InputStream input = new java.io.FileInputStream(source);
-             OutputStream output = getContentResolver().openOutputStream(uri, "wt")) {
+             OutputStream output = getContentResolver().openOutputStream(uri, "w")) {
             if (output == null) return false;
             byte[] buffer = new byte[64 * 1024];
             int count;
