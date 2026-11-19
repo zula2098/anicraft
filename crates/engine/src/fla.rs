@@ -833,7 +833,7 @@ mod tests {
             id: ElementId(703),
             name: "symbol instance".into(),
             transform: anicraft_geom::Affine::translate(24.0, 16.0),
-            color: anicraft_doc::ColorEffect::default(),
+            color: anicraft_doc::ColorEffect::Alpha(0.5),
             kind: ElementKind::Symbol {
                 symbol: symbol_id,
                 loop_mode: anicraft_doc::LoopMode::SingleFrame,
@@ -870,6 +870,7 @@ mod tests {
         let elements = &opened.timeline(0).layers[0].keyframe_at(0).expect("main keyframe").elements;
         assert_eq!(elements.len(), 2);
         assert!(matches!(elements[0].kind, ElementKind::Symbol { .. }));
+        assert_eq!(elements[0].color, anicraft_doc::ColorEffect::Alpha(0.5));
         let ElementKind::Shape(shape) = &elements[1].kind else { panic!("bitmap fill should remain a shape"); };
         assert!(matches!(shape.fill, Some(Paint::Bitmap { .. })));
         let symbol_shape = &opened.library[0].timeline.layers[0].keyframe_at(0).expect("symbol keyframe").elements[0];
