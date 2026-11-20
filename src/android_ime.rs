@@ -160,6 +160,8 @@ pub(crate) struct Bridge {
     connection: Option<AndroidImeConnection<Handler>>,
     events: PendingEvents,
     close_requested: Arc<AtomicBool>,
+    focused: Option<egui::Id>,
+    dismissed: bool,
 }
 
 impl Bridge {
@@ -179,6 +181,8 @@ impl Bridge {
             connection: None,
             events: Arc::new(Mutex::new(Vec::new())),
             close_requested: Arc::new(AtomicBool::new(false)),
+            focused: None,
+            dismissed: false,
         })
     }
 
@@ -193,27 +197,31 @@ impl Bridge {
             ctx.request_repaint();
         }
 
+        let focused = ctx.memory(|memory| memory.focused());
+        if focused != self.focused {
+            self.focused = focused;
+            self.dismissed = false;
+        }
         if self.close_requested.swap(false, Ordering::AcqRel) {
             self.connection = None;
+            self.dismissed = true;
         }
 
-        if ctx.wants_keyboard_input() {
-            if self.connection.is_none() {
-                let handler = Handler {
-                    events: self.events.clone(),
-                    close_requested: self.close_requested.clone(),
-                };
-                match AndroidImeConnection::open(&self.context, handler) {
-                    Ok(connection) => self.connection = Some(connection),
-                    Err(error) => {
-                        // Avoid retrying every frame; the next focus transition retries.
-                        self.close_requested.store(true, Ordering::Release);
-                        let _ = error;
-                    }
+        if !ctx.egui_wants_keyboard_input() {
+            self.connection = None;
+            self.dismissed = false;
+        } else if !self.dismissed && self.connection.is_none() {
+            let handler = Handler {
+                events: self.events.clone(),
+                close_requested: self.close_requested.clone(),
+            };
+            match AndroidImeConnection::open(&self.context, handler) {
+                Ok(connection) => self.connection = Some(connection),
+                Err(error) => {
+                    self.dismissed = true;
+                    let _ = error;
                 }
             }
-        } else if self.connection.is_some() {
-            self.connection = None;
         }
     }
 }
