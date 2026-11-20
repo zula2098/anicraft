@@ -366,6 +366,8 @@ pub struct App {
     /// The shape hint a right-click landed on (its menu is showing).
     pub hint_menu: Option<usize>,
     pub playing: bool,
+    /// Prevents repeating the three-finger undo command while the same touch gesture remains down.
+    pub three_finger_undo_active: bool,
     pub looping: bool,
     play_acc: f64,
     /// Onion skin and Edit Multiple Frames (ADR 0047): view state, passed with each render.
@@ -753,6 +755,7 @@ impl App {
             drag: Drag::None,
             hint_menu: None,
             playing: false,
+            three_finger_undo_active: false,
             looping: true,
             play_acc: 0.0,
             onion: crate::onion::from_prefs(&prefs.onion),
