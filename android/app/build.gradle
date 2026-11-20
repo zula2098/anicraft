@@ -52,6 +52,9 @@ def buildRustAndroid = tasks.register("buildRustAndroid", Exec) {
     inputs.file(new File(repoRoot, "Cargo.lock"))
     inputs.dir(new File(repoRoot, "src"))
     inputs.dir(new File(repoRoot, "crates"))
+    inputs.dir(new File(repoRoot, "assets"))
+    inputs.dir(new File(repoRoot, "docs/guide"))
+    inputs.file(new File(repoRoot, "build.rs"))
     outputs.file(rustOutput)
 }
 
