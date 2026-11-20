@@ -353,6 +353,9 @@ impl PolyStarOptions {
 }
 
 pub struct App {
+    /// Android InputConnection bridge: forwards IME text/composition into egui.
+    #[cfg(target_os = "android")]
+    pub(crate) android_ime: Option<crate::android_ime::Bridge>,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) updates: crate::updates::Updates,
     /// The live control port, with `--control` (ADR 0104).
@@ -744,6 +747,8 @@ impl App {
         // The editor draws as Animate does: merge drawing, until Object Drawing (J) is switched on.
         session.style.object_drawing = false;
         let mut app = App {
+            #[cfg(target_os = "android")]
+            android_ime: None,
             #[cfg(not(target_arch = "wasm32"))]
             updates: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -4344,6 +4349,10 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        #[cfg(target_os = "android")]
+        if let Some(ime) = self.android_ime.as_mut() {
+            ime.update(ui.ctx());
+        }
         // Stage work on the window's device is submitted only while this frame runs (ADR 0105).
         let _in_frame = crate::gpu_stage::in_frame(ui.ctx());
         #[cfg(not(target_arch = "wasm32"))]
