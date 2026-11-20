@@ -308,7 +308,14 @@ public final class MainActivity extends GameActivity {
     }
 
     private void applyImmersiveMode() {
+        // Do not re-apply immersive navigation while Android is showing the IME. On some
+        // devices that races the GameActivity/winit text-input request and dismisses the
+        // soft keyboard immediately after a text field receives focus.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsets rootInsets = getWindow().getDecorView().getRootWindowInsets();
+            if (rootInsets != null && rootInsets.isVisible(WindowInsets.Type.ime())) {
+                return;
+            }
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
