@@ -314,6 +314,7 @@ const HELP: &str = "anicraft [file.anicraft|file.fla|file.xfl] [--version] [--sc
 #[unsafe(no_mangle)]
 pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
     platform::set_android_activity(app.vm_as_ptr(), app.activity_as_ptr());
+    let ime_bridge = crate::android_ime::Bridge::from_android_app(&app).ok();
     let options = eframe::NativeOptions {
         android_app: Some(app),
         // Qualcomm's WGPU path leaks several gigabytes of KGSL memory on some
@@ -329,6 +330,7 @@ pub fn android_main(app: winit::platform::android::activity::AndroidApp) {
         Box::new(move |cc| {
             startup::log_adapter(cc.wgpu_render_state.as_ref());
             let mut app = app::App::new(cc, session, None);
+            app.android_ime = ime_bridge;
             // A phone has much less physical screen area than the desktop layout targets.
             // Keep the user's smaller setting, but start Android at a compact 80% scale.
             app.prefs.ui_scale = app.prefs.ui_scale.min(0.8);
