@@ -899,10 +899,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
     // Right-click: select what is under the cursor (keeping an existing multi-selection), then
     // offer the actions that apply to it.
-    if resp.secondary_clicked() {
+    if !app.three_finger_undo_active && resp.secondary_clicked() {
         app.hint_menu = resp.interact_pointer_pos().and_then(hint_at).map(|m| m.index);
     }
-    if resp.secondary_clicked()
+    if !app.three_finger_undo_active && resp.secondary_clicked()
         && app.hint_menu.is_none()
         && !preview
         && let Some(p) = resp.interact_pointer_pos()
