@@ -9,7 +9,8 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation"
             android:exported="true"
-            android:label="AniCraft">
+            android:label="AniCraft"
+            android:windowSoftInputMode="adjustResize">
             <meta-data
                 android:name="android.app.lib_name"
                 android:value="main" />
