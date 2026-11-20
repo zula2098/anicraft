@@ -281,7 +281,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         if let Some(touch) = multi_touch {
             // Three fingers on the stage undo the last document action (Ctrl+Z).
             // Fire once per gesture and reserve this gesture for undo, not camera movement.
-            if touch.num_touches == 3 {
+            if touch.num_touches >= 3 {
                 if !app.three_finger_undo_active {
                     app.three_finger_undo_active = true;
                     let _ = app.run("edit.undo", serde_json::json!({}));
