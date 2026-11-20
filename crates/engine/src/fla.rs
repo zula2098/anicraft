@@ -125,8 +125,11 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
     let mut stroke = String::new();
     let mut fill_index = 0;
     let mut stroke_index = 0;
-    if shape.fill_rule != anicraft_geom::FillRule::NonZero || shape.merge || shape.warp.is_some() {
-        return Err(EngineError::Format("native FLA export does not yet support even-odd fills, merged shapes, or warped artwork".into()));
+    // XFL's DOMShape edge/fill representation uses the standard even-odd
+    // fill behavior. The importer also normalizes imported filled shapes to
+    // EvenOdd, so both document fill-rule variants can be represented here.
+    if shape.merge || shape.warp.is_some() {
+        return Err(EngineError::Format("native FLA export does not yet support merged shapes or warped artwork".into()));
     }
     if let Some(paint) = &shape.fill {
         fill_index = 1;
@@ -682,6 +685,22 @@ mod tests {
         }));
         let error = edge_data(&Path { cmds }).expect_err("oversized paths must be rejected");
         assert!(error.to_string().contains("100,000-command safety limit"));
+    }
+
+    #[test]
+    fn even_odd_fills_are_serialized_as_native_xfl_shapes() {
+        let mut shape = Shape::filled(
+            Path::rect(0.0, 0.0, 10.0, 10.0),
+            Paint::Solid(anicraft_doc::Rgba::hex(0x336699)),
+        );
+        shape.fill_rule = anicraft_geom::FillRule::EvenOdd;
+        let xml = shape_xml(
+            &shape,
+            anicraft_geom::Affine::IDENTITY,
+            &std::collections::HashMap::new(),
+        ).expect("XFL supports the standard even-odd fill behavior");
+        assert!(xml.contains("SolidColor"));
+        assert!(xml.contains("edges"));
     }
 
     #[test]
