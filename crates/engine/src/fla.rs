@@ -477,6 +477,7 @@ pub(crate) fn export(doc: &Document, path: &FsPath) -> Result<(Vec<u8>, u32, usi
         let name = safe_library_path(&doc.entry_path(anicraft_doc::LibraryEntry::Item(anicraft_doc::LibraryItem::Bitmap(bitmap.id))) )?;
         bitmap_names.insert(bitmap.id, name);
     }
+    let mut shapes = 0usize;
     let mut symbols_xml = String::new();
     let mut symbol_files = Vec::with_capacity(doc.library.len());
     for symbol in &doc.library {
