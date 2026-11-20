@@ -230,3 +230,10 @@ opt-level = 3
 
 [profile.web.package.anicraft-geom]
 opt-level = 3
+
+
+# Android GameActivity emits IME text snapshots; upstream winit 0.30.13 currently drops them.
+# This 0.30-compatible patch forwards GameActivity text/composition/action events to egui.
+[patch.crates-io]
+winit = { git = "https://github.com/rib/winit", rev = "ecb961694691ce80d066abb67784ace6713f9980" }
+android-activity = { git = "https://github.com/rust-mobile/android-activity", rev = "ea5932b272a151690c655177267ca26cf0d8fd6a" }
