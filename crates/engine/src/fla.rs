@@ -459,7 +459,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             let label = if key.label.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&key.label)) };
             let (sound_attrs, sound_envelope) = frame_sound_xml(key, doc)?;
             let script = frame_script_xml(key.script.as_ref())?;
-            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{tween_attrs}{label}{sound_attrs}>{sound_envelope}{script}{elements}</DOMFrame>", key.start, key.duration.max(1));
+            let key_mode = if key.tween.is_some() { "22017" } else { "9728" };
+            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"{key_mode}\"{tween_attrs}{label}{sound_attrs}>{sound_envelope}{script}{elements}</DOMFrame>", key.start, key.duration.max(1));
             push_bounded(&mut frames, &frame_xml)?;
         }
         push_bounded(&mut frames, "</frames>")?;
