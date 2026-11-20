@@ -13,11 +13,10 @@ rustup target add aarch64-linux-android
 cargo install cargo-ndk --locked
 ```
 
-Set `ANDROID_NDK_HOME` to the installed NDK directory, then run:
+Set `ANDROID_NDK_HOME` to the installed NDK directory, then run this from the repository root:
 
 ```sh
-cd android
-gradle --no-daemon :app:assembleDebug
+gradle -p android --no-daemon :app:assembleDebug
 ```
 
 The APK is written to
