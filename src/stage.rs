@@ -233,6 +233,16 @@ fn to_v(p: Pos2) -> Vec2 {
     Vec2::new(p.x, p.y)
 }
 
+/// Returns true once when a three-or-more-finger touch begins on the stage.
+/// Track the touch count even while the centroid leaves the canvas, so one gesture cannot
+/// trigger undo a second time by crossing the stage boundary.
+fn update_three_finger_undo(num_touches: Option<usize>, on_stage: bool, active: &mut bool) -> bool {
+    let three = num_touches.is_some_and(|count| count >= 3);
+    let fire = three && on_stage && !*active;
+    *active = three;
+    fire
+}
+
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     // View › Rulers along the top and the left (ADR 0076); the stage view in what is left.
     let (canvas, bars) = crate::rulers::layout(app, ui.max_rect());
@@ -274,33 +284,33 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
 
     // ---- camera input -------------------------------------------------------------------
-    if resp.hovered() {
-        // Touchscreens report a two-finger gesture separately from pointer drags. Keep
-        // one-finger drags for the active tool; two fingers always navigate the stage.
-        let (zoom_delta, scroll, multi_touch) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.multi_touch()));
-        if let Some(touch) = multi_touch {
-            // Three fingers on the stage undo the last document action (Ctrl+Z).
-            // Fire once per gesture and reserve this gesture for undo, not camera movement.
-            if touch.num_touches >= 3 {
-                if !app.three_finger_undo_active {
-                    app.three_finger_undo_active = true;
-                    let _ = app.run("edit.undo", serde_json::json!({}));
-                }
-            } else {
-                app.three_finger_undo_active = false;
-                let anchor = resp.hover_pos().unwrap_or(canvas.center());
-                if (touch.zoom_delta - 1.0).abs() > 1e-4 {
-                    app.zoom_about(canvas, anchor, app.view.zoom * touch.zoom_delta);
-                }
-                if touch.translation_delta != egui::Vec2::ZERO {
-                    app.view.pan += touch.translation_delta;
-                }
+    // Do not gate touch recognition on Response::hovered(): Android touch input has no
+    // persistent hover pointer, so this used to discard the entire three-finger gesture.
+    let (zoom_delta, scroll, multi_touch) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.multi_touch()));
+    let touch_on_stage = multi_touch.filter(|touch| canvas.contains(touch.center_pos));
+    let undo_now = update_three_finger_undo(
+        multi_touch.map(|touch| touch.num_touches),
+        touch_on_stage.is_some(),
+        &mut app.three_finger_undo_active,
+    );
+    if undo_now {
+        let _ = app.run("edit.undo", serde_json::json!({}));
+    }
+    if let Some(touch) = touch_on_stage {
+        // Three fingers are reserved for undo; two fingers navigate the stage.
+        if touch.num_touches < 3 {
+            let anchor = touch.center_pos;
+            if (touch.zoom_delta - 1.0).abs() > 1e-4 {
+                app.zoom_about(canvas, anchor, app.view.zoom * touch.zoom_delta);
             }
-        } else if let Some(p) = resp.hover_pos() {
-            app.three_finger_undo_active = false;
+            if touch.translation_delta != egui::Vec2::ZERO {
+                app.view.pan += touch.translation_delta;
+            }
+        }
+    } else if resp.hovered() {
+        if let Some(p) = resp.hover_pos() {
             if (zoom_delta - 1.0).abs() > 1e-4 {
-                let z = app.view.zoom * zoom_delta;
-                app.zoom_about(canvas, p, z);
+                app.zoom_about(canvas, p, app.view.zoom * zoom_delta);
             } else if app.tool == Tool::Camera && scroll.y != 0.0 {
                 // With the Camera tool the wheel zooms the camera, not the view.
                 crate::camera_tool::wheel(app, scroll.y, now);
@@ -5000,6 +5010,19 @@ mod pointer_tests {
             run_frame(&ctx, &mut app, t, Vec::new());
         }
         app
+    }
+
+
+    #[test]
+    fn three_finger_undo_fires_once_per_touch_gesture_even_across_canvas_edge() {
+        let mut active = false;
+        assert!(update_three_finger_undo(Some(3), true, &mut active));
+        assert!(!update_three_finger_undo(Some(3), true, &mut active));
+        assert!(!update_three_finger_undo(Some(3), false, &mut active));
+        assert!(!update_three_finger_undo(Some(2), true, &mut active));
+        assert!(update_three_finger_undo(Some(3), true, &mut active));
+        assert!(!update_three_finger_undo(None, false, &mut active));
+        assert!(update_three_finger_undo(Some(4), true, &mut active));
     }
 
     /// #192: a double-click on a raw fill selects it with its outline, at any speed a desktop
