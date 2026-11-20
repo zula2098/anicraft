@@ -287,9 +287,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     // Do not gate touch recognition on Response::hovered(): Android touch input has no
     // persistent hover pointer, so this used to discard the entire three-finger gesture.
     let (zoom_delta, scroll, multi_touch) = ui.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.multi_touch()));
+    let touch_count = multi_touch.as_ref().map(|touch| touch.num_touches);
     let touch_on_stage = multi_touch.filter(|touch| canvas.contains(touch.center_pos));
     let undo_now = update_three_finger_undo(
-        multi_touch.map(|touch| touch.num_touches),
+        touch_count,
         touch_on_stage.is_some(),
         &mut app.three_finger_undo_active,
     );
@@ -385,7 +386,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     // The Selection tool on the movie's picture: points there are the picture's (ADR 0082).
     let through = preview && !panning && app.tool == Tool::Select;
     // A drag from a ruler makes a guide (ADR 0076).
-    crate::rulers::input(app, ui, &bars, geo, preview);
+    if !app.three_finger_undo_active {
+        crate::rulers::input(app, ui, &bars, geo, preview);
+    }
     let guide_hot = if app.drag == Drag::None && !panning && !preview { pointer.and_then(|p| crate::rulers::guide_at(app, geo, p)) } else { None };
     if paused && (resp.drag_started() || resp.clicked()) {
         app.status_ok(tr!("Previewing through the camera: the Selection tool picks and moves artwork here; other tools wait. Turn off View › Preview Through Camera to draw."));
@@ -494,19 +497,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             rotate_cursor(&ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("stage_cursor"))), p, p - centre);
         }
     }
-    if let Some(picker) = picker {
+    if let Some(picker) = picker.filter(|_| !app.three_finger_undo_active) {
         crate::erasertool::picker_dropper(app, ui, &resp, picker, pointer.map(|p| (p, to_v(to_stage(p)))), zoom);
     }
 
-    if resp.clicked() || resp.drag_started() || resp.secondary_clicked() {
+    if !app.three_finger_undo_active && (resp.clicked() || resp.drag_started() || resp.secondary_clicked()) {
         // Ctrl+X/C/V go back to artwork.
         app.timeline_focus = false;
     }
-    if app.tool == Tool::Pen && !panning && !paused {
+    if !app.three_finger_undo_active && app.tool == Tool::Pen && !panning && !paused {
         crate::pathtools::pen_input(app, ui, &resp, xf);
     }
 
-    if resp.drag_started() {
+    if !app.three_finger_undo_active && resp.drag_started() {
         let press = ui.input(|i| i.pointer.press_origin()).unwrap_or(canvas.center());
         let sp = to_stage(press);
         app.drag = if panning {
@@ -600,7 +603,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         };
     }
 
-    if resp.dragged()
+    if !app.three_finger_undo_active && resp.dragged()
         && let Some(p) = resp.interact_pointer_pos()
         && matches!(app.drag, Drag::CameraPan { .. } | Drag::CameraRotate { .. })
     {
@@ -608,7 +611,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         crate::camera_tool::drag_to(app, &cam_geo, &mut d, p);
         app.drag = d;
     }
-    if resp.dragged()
+    if !app.three_finger_undo_active && resp.dragged()
         && let Some(c) = resp.interact_pointer_pos().map(to_stage)
         && matches!(app.drag, Drag::Bone { .. } | Drag::BonePose { .. } | Drag::ArmatureMove { .. })
     {
@@ -616,7 +619,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         crate::bone_tool::drag_to(app, &mut d, c);
         app.drag = d;
     }
-    if resp.dragged() {
+    if !app.three_finger_undo_active && resp.dragged() {
         let mut cur = resp.interact_pointer_pos().map(to_stage);
         // A shape's other end snaps too, unless Shift constrains it (ADR 0045).
         if let (Drag::Shape { .. }, Some(c)) = (app.drag, cur) {
@@ -821,7 +824,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         app.path_pick = None;
         app.status_ok(tr!("Attach to Path cancelled."));
     }
-    if resp.clicked()
+    if !app.three_finger_undo_active && resp.clicked()
         && !paused
         && let Some(p) = resp.interact_pointer_pos() {
             let sp = to_stage(p);
@@ -915,6 +918,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     // Double-clicking text with the Selection tool edits it.
     if app.tool == Tool::Select
         && !preview
+        && !app.three_finger_undo_active
         && resp.double_clicked()
         && let Some(p) = resp.interact_pointer_pos()
     {
