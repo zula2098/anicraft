@@ -26,8 +26,6 @@ android {
     }
 }
 
-// Align legacy Kotlin JDK7/JDK8 stdlib artifacts with the Kotlin stdlib
-// used by current AndroidX dependencies to avoid duplicate classes.
 configurations.configureEach {
     resolutionStrategy.force(
         "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22",
@@ -36,9 +34,7 @@ configurations.configureEach {
 }
 
 dependencies {
-    // GameActivity exposes AndroidX Core window-insets types in its Java API.
     implementation "androidx.core:core:1.16.0"
-    // GameActivity extends AppCompatActivity; its public Java type must be on the compile classpath.
     implementation "androidx.appcompat:appcompat:1.7.1"
     implementation "androidx.documentfile:documentfile:1.0.1"
     implementation "androidx.games:games-activity:4.4.0"
@@ -47,7 +43,7 @@ dependencies {
 def buildRustAndroid = tasks.register("buildRustAndroid", Exec) {
     workingDir repoRoot
     commandLine "cargo", "ndk", "-t", "arm64-v8a", "-P", "26", "build", "--release",
-        "--manifest-path", "Cargo.toml", "--lib", "--no-default-features", "--features", "android,sound-output", "--locked"
+        "--manifest-path", "Cargo.toml", "--lib", "--no-default-features", "--features", "android,sound-output"
     inputs.file(new File(repoRoot, "Cargo.toml"))
     inputs.file(new File(repoRoot, "Cargo.lock"))
     inputs.dir(new File(repoRoot, "src"))
