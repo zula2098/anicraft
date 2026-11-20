@@ -20,6 +20,7 @@ type PendingEvents = Arc<Mutex<Vec<Event>>>;
 
 struct Handler {
     events: PendingEvents,
+    ctx: egui::Context,
     close_requested: Arc<AtomicBool>,
 }
 
@@ -28,6 +29,7 @@ impl Handler {
         if let Ok(mut events) = self.events.lock() {
             events.push(event);
         }
+        self.ctx.request_repaint();
     }
 
     fn key(&self, key: Key) {
@@ -51,6 +53,7 @@ impl Handler {
 impl AndroidImeConnectionHandler for Handler {
     fn connection_closed(&self) {
         self.close_requested.store(true, Ordering::Release);
+        self.ctx.request_repaint();
     }
 
     fn send_key_event(&self, key_code: i32) -> bool {
@@ -213,6 +216,7 @@ impl Bridge {
         } else if !self.dismissed && self.connection.is_none() {
             let handler = Handler {
                 events: self.events.clone(),
+                ctx: ctx.clone(),
                 close_requested: self.close_requested.clone(),
             };
             match AndroidImeConnection::open(&self.context, handler) {
