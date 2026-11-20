@@ -1,8 +1,8 @@
 //! Android software-keyboard bridge for egui.
 //!
-//! GameActivity owns the Android input connection, but winit 0.30 does not yet
-//! forward its text snapshots to egui. This small InputConnection supplies the
-//! missing IME path while leaving pointer and hardware-key input on winit.
+//! winit 0.30 does not forward Android GameActivity text snapshots to egui.
+//! This small InputConnection supplies the missing IME path while leaving pointer
+//! and hardware-key input on winit.
 
 use android_ime::{AndroidImeConnection, AndroidImeConnectionHandler, AndroidImeContext};
 use egui::{Event, ImeEvent, Key, Modifiers};
@@ -200,14 +200,14 @@ impl Bridge {
             ctx.request_repaint();
         }
 
+        if self.close_requested.swap(false, Ordering::AcqRel) {
+            self.connection = None;
+            self.dismissed = true;
+        }
         let focused = ctx.memory(|memory| memory.focused());
         if focused != self.focused {
             self.focused = focused;
             self.dismissed = false;
-        }
-        if self.close_requested.swap(false, Ordering::AcqRel) {
-            self.connection = None;
-            self.dismissed = true;
         }
 
         if !ctx.text_edit_focused() {
