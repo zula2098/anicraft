@@ -210,7 +210,7 @@ impl Bridge {
             self.dismissed = true;
         }
 
-        if !ctx.egui_wants_keyboard_input() {
+        if !ctx.text_edit_focused() {
             self.connection = None;
             self.dismissed = false;
         } else if !self.dismissed && self.connection.is_none() {
