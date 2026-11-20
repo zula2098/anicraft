@@ -320,9 +320,9 @@ fn frame_tween_attrs(key: &anicraft_doc::Keyframe) -> Result<String> {
     if tween.orient || tween.keep_area || !tween.groups.is_empty() {
         return Err(EngineError::Format("native FLA export currently supports classic tweens without path orientation, keep-area scaling, or per-property custom eases".into()));
     }
-    let acceleration = match tween.easing {
+    let acceleration = match &tween.easing {
         Easing::Linear => None,
-        Easing::Classic(value) if value.is_finite() && (-100.0..=100.0).contains(&value) => Some(value),
+        Easing::Classic(value) if value.is_finite() && (-100.0..=100.0).contains(value) => Some(*value),
         _ => return Err(EngineError::Format("native FLA export currently supports linear and classic-slider tween easing only".into())),
     };
     let acceleration = acceleration.filter(|value| *value != 0.0)
