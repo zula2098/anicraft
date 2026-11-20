@@ -314,21 +314,24 @@ fn color_effect_xml(effect: anicraft_doc::ColorEffect) -> String {
 /// narrow: linear and Animate's classic acceleration slider are losslessly representable.
 fn frame_tween_attrs(key: &anicraft_doc::Keyframe) -> Result<String> {
     let Some(tween) = &key.tween else { return Ok(String::new()) };
-    if tween.kind != TweenKind::Classic {
-        return Err(EngineError::Format("native FLA export currently supports classic tweens only; shape tweens are not yet serialized".into()));
-    }
     if tween.orient || tween.keep_area || !tween.groups.is_empty() {
-        return Err(EngineError::Format("native FLA export currently supports classic tweens without path orientation, keep-area scaling, or per-property custom eases".into()));
+        return Err(EngineError::Format("native FLA export does not yet support path orientation, keep-area scaling, or per-property custom tween eases".into()));
     }
-    let acceleration = match &tween.easing {
-        Easing::Linear => None,
-        Easing::Classic(value) if value.is_finite() && (-100.0..=100.0).contains(value) => Some(*value),
-        _ => return Err(EngineError::Format("native FLA export currently supports linear and classic-slider tween easing only".into())),
-    };
-    let acceleration = acceleration.filter(|value| *value != 0.0)
-        .map(|value| format!(" acceleration=\"{}\"", n(value)))
-        .unwrap_or_default();
-    Ok(format!(" tweenType=\"motion\"{acceleration}"))
+    match tween.kind {
+        TweenKind::Classic => {
+            let acceleration = match &tween.easing {
+                Easing::Linear => None,
+                Easing::Classic(value) if value.is_finite() && (-100.0..=100.0).contains(value) => Some(*value),
+                _ => return Err(EngineError::Format("native FLA export currently supports linear and classic-slider tween easing only".into())),
+            };
+            let acceleration = acceleration.filter(|value| *value != 0.0)
+                .map(|value| format!(" acceleration=\"{}\"", n(value)))
+                .unwrap_or_default();
+            Ok(format!(" tweenType=\"motion\"{acceleration}"))
+        }
+        TweenKind::Shape if matches!(&tween.easing, Easing::Linear) => Ok(" tweenType=\"shape\"".into()),
+        TweenKind::Shape => Err(EngineError::Format("native FLA shape tweens currently require linear easing".into())),
+    }
 }
 
 fn frame_script_xml(script: Option<&anicraft_doc::FrameScript>) -> Result<String> {
@@ -618,13 +621,20 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_shape_tweens_are_rejected_explicitly() {
+    #[allow(clippy::expect_used)]
+    fn shape_tween_without_hints_round_trips() {
         let mut doc = Document::default();
         let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
         let key = layer.keyframe_mut(0).expect("default layer has a first keyframe");
+        key.duration = 12;
         key.tween = Some(anicraft_doc::Tween::new(Easing::Linear, TweenKind::Shape));
-        let error = export(&doc, FsPath::new("shape-tween.fla")).expect_err("shape tween serialization is not implemented yet");
-        assert!(error.to_string().contains("classic tweens only"));
+
+        let (bytes, _, _) = export(&doc, FsPath::new("shape-tween.fla")).expect("linear shape tween should export");
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the shape-tween package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        let tween = opened.timeline(0).layers[0].keyframe_at(0).and_then(|key| key.tween.as_ref()).expect("shape tween should remain a tween");
+        assert_eq!(tween.kind, TweenKind::Shape);
+        assert_eq!(tween.easing, Easing::Linear);
     }
 
     #[test]
