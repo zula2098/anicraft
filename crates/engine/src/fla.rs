@@ -4,7 +4,7 @@
 //! Unsupported document features are rejected rather than silently flattened or discarded.
 
 use crate::{EngineError, Result};
-use anicraft_doc::{Document, ElementKind, LayerKind, Paint};
+use anicraft_doc::{Document, Easing, ElementKind, LayerKind, Paint, TweenKind};
 use anicraft_doc::sound::{SoundEffect, SoundFormat};
 use anicraft_geom::PathCmd;
 use anicraft_geom::Path;
@@ -310,6 +310,27 @@ fn color_effect_xml(effect: anicraft_doc::ColorEffect) -> String {
     format!("<color>{body}</color>")
 }
 
+/// XFL stores a classic tween on its starting DOMFrame. Keep the first slice deliberately
+/// narrow: linear and Animate's classic acceleration slider are losslessly representable.
+fn frame_tween_attrs(key: &anicraft_doc::Keyframe) -> Result<String> {
+    let Some(tween) = &key.tween else { return Ok(String::new()) };
+    if tween.kind != TweenKind::Classic {
+        return Err(EngineError::Format("native FLA export currently supports classic tweens only; shape tweens are not yet serialized".into()));
+    }
+    if tween.orient || tween.keep_area || !tween.groups.is_empty() {
+        return Err(EngineError::Format("native FLA export currently supports classic tweens without path orientation, keep-area scaling, or per-property custom eases".into()));
+    }
+    let acceleration = match tween.easing {
+        Easing::Linear => None,
+        Easing::Classic(value) if value.is_finite() && (-100.0..=100.0).contains(&value) => Some(value),
+        _ => return Err(EngineError::Format("native FLA export currently supports linear and classic-slider tween easing only".into())),
+    };
+    let acceleration = acceleration.filter(|value| *value != 0.0)
+        .map(|value| format!(" acceleration=\"{}\"", n(value)))
+        .unwrap_or_default();
+    Ok(format!(" tweenType=\"motion\"{acceleration}"))
+}
+
 fn frame_script_xml(script: Option<&anicraft_doc::FrameScript>) -> Result<String> {
     let Some(script) = script else { return Ok(String::new()) };
     match script {
@@ -359,9 +380,10 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             if end_frame > MAX_VECTOR_FRAMES {
                 return Err(EngineError::Format(format!("native FLA export is limited to {MAX_VECTOR_FRAMES} frames per scene")));
             }
-            if key.tween.is_some() || key.motion.is_some() || !key.hints.is_empty() || !key.pose.is_empty() {
-                return Err(EngineError::Format(format!("native FLA export does not yet support tweens, frame scripts, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
+            if key.motion.is_some() || !key.hints.is_empty() || !key.pose.is_empty() {
+                return Err(EngineError::Format(format!("native FLA export does not yet support motion tweens, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
             }
+            let tween_attrs = frame_tween_attrs(key)?;
             let mut elements = String::from("<elements>");
             for element in &key.elements {
                 match &element.kind {
@@ -434,7 +456,7 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             let label = if key.label.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&key.label)) };
             let (sound_attrs, sound_envelope) = frame_sound_xml(key, doc)?;
             let script = frame_script_xml(key.script.as_ref())?;
-            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{label}{sound_attrs}>{sound_envelope}{script}{elements}</DOMFrame>", key.start, key.duration.max(1));
+            let frame_xml = format!("<DOMFrame index=\"{}\" duration=\"{}\" keyMode=\"9728\"{tween_attrs}{label}{sound_attrs}>{sound_envelope}{script}{elements}</DOMFrame>", key.start, key.duration.max(1));
             push_bounded(&mut frames, &frame_xml)?;
         }
         push_bounded(&mut frames, "</frames>")?;
@@ -576,6 +598,33 @@ mod tests {
         let error = timeline_xml(&doc.scenes[0].timeline, &doc, &mut shapes, &std::collections::HashMap::new(), &std::collections::HashMap::new())
             .expect_err("keyframe ranges beyond the export limit must be rejected");
         assert!(error.to_string().contains("limited to 10,000 frames"));
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn classic_tween_is_serialized_and_round_trips() {
+        let mut doc = Document::default();
+        let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let key = layer.keyframe_mut(0).expect("default layer has a first keyframe");
+        key.duration = 12;
+        key.tween = Some(anicraft_doc::Tween::new(Easing::Classic(35.0), TweenKind::Classic));
+
+        let (bytes, _, _) = export(&doc, FsPath::new("classic-tween.fla")).expect("classic tween should export");
+        let (opened, report) = anicraft_xfl::import_fla(&bytes).expect("XFL importer should open the tween package");
+        assert!(report.skipped.is_empty(), "unexpected import skips: {:?}", report.skipped);
+        let tween = opened.timeline(0).layers[0].keyframe_at(0).and_then(|key| key.tween.as_ref()).expect("classic tween should remain a tween");
+        assert_eq!(tween.kind, TweenKind::Classic);
+        assert_eq!(tween.easing, Easing::Classic(35.0));
+    }
+
+    #[test]
+    fn unsupported_shape_tweens_are_rejected_explicitly() {
+        let mut doc = Document::default();
+        let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+        let key = layer.keyframe_mut(0).expect("default layer has a first keyframe");
+        key.tween = Some(anicraft_doc::Tween::new(Easing::Linear, TweenKind::Shape));
+        let error = export(&doc, FsPath::new("shape-tween.fla")).expect_err("shape tween serialization is not implemented yet");
+        assert!(error.to_string().contains("classic tweens only"));
     }
 
     #[test]
