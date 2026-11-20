@@ -25,6 +25,8 @@ mod a11y;
 mod actions_panel;
 mod aids_dialog;
 mod app;
+#[cfg(target_os = "android")]
+mod android_ime;
 mod audio_keys;
 mod autosave;
 mod brush_panel;
