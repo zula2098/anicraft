@@ -24,10 +24,6 @@ android {
             jniLibs.srcDir(generatedJni)
         }
     }
-
-    buildFeatures {
-        prefab true
-    }
 }
 
 // Align legacy Kotlin JDK7/JDK8 stdlib artifacts with the Kotlin stdlib
