@@ -1142,7 +1142,7 @@ mod tests {
         let filters = [filters.as_slice(), std::slice::from_ref(&disabled)].concat();
         let xml = filter_xml(&filters).expect("all native filter kinds should serialize");
         for tag in ["BlurFilter", "DropShadowFilter", "GlowFilter", "BevelFilter", "GradientGlowFilter", "GradientBevelFilter", "AdjustColorFilter"] {
-            assert!(xml.contains(&format!("<{tag}"), "missing {tag}: {xml}");
+            assert!(xml.contains(&format!("<{tag}")), "missing {tag}: {xml}");
         }
         assert!(xml.contains("enabled=\"false\""));
         assert!(xml.contains("<GradientEntry"));
