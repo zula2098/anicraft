@@ -1107,4 +1107,47 @@ mod tests {
         };
         assert_eq!(imported_shape.stroke.as_ref().map(|stroke| stroke.width), Some(2.0));
     }
+    #[test]
+    fn symbol_filter_xml_covers_all_native_filter_kinds_and_disabled_state() {
+        let filters: Vec<FilterEntry> = vec![
+            Filter::Blur { blur_x: 8.0, blur_y: 2.0, quality: 2 }.into(),
+            Filter::DropShadow {
+                blur_x: 4.0, blur_y: 4.0, strength: 0.6, quality: 1, angle: 45.0,
+                distance: 6.0, color: anicraft_doc::Rgba::hex(0x112233).with_alpha(0.6),
+                inner: false, knockout: true, hide_object: false,
+            }.into(),
+            Filter::Glow {
+                blur_x: 10.0, blur_y: 10.0, strength: 2.0, quality: 1,
+                color: anicraft_doc::Rgba::hex(0xE63946), inner: true, knockout: false,
+            }.into(),
+            Filter::Bevel {
+                blur_x: 4.0, blur_y: 4.0, strength: 1.0, quality: 1, angle: 45.0,
+                distance: 4.0, shadow_color: anicraft_doc::Rgba::BLACK.with_alpha(0.8),
+                highlight_color: anicraft_doc::Rgba::WHITE, side: FilterSide::Full, knockout: false,
+            }.into(),
+            Filter::GradientGlow {
+                blur_x: 8.0, blur_y: 8.0, strength: 1.0, quality: 1, angle: 45.0,
+                distance: 0.0, stops: anicraft_doc::default_glow_ramp(),
+                side: FilterSide::Outer, knockout: false,
+            }.into(),
+            Filter::GradientBevel {
+                blur_x: 4.0, blur_y: 4.0, strength: 1.0, quality: 1, angle: 45.0,
+                distance: 3.0, stops: anicraft_doc::default_bevel_ramp(),
+                side: FilterSide::Inner, knockout: false,
+            }.into(),
+            Filter::AdjustColor { brightness: -20.0, contrast: 30.0, saturation: -100.0, hue: 15.0 }.into(),
+        ];
+        let mut disabled = Filter::Blur { blur_x: 20.0, blur_y: 20.0, quality: 1 }.into();
+        disabled.enabled = false;
+        let filters = [filters.as_slice(), std::slice::from_ref(&disabled)].concat();
+        let xml = filter_xml(&filters).expect("all native filter kinds should serialize");
+        for tag in ["BlurFilter", "DropShadowFilter", "GlowFilter", "BevelFilter", "GradientGlowFilter", "GradientBevelFilter", "AdjustColorFilter"] {
+            assert!(xml.contains(&format!("<{tag}"), "missing {tag}: {xml}");
+        }
+        assert!(xml.contains("enabled=\"false\""));
+        assert!(xml.contains("<GradientEntry"));
+        assert!(xml.contains("type=\"outer\""));
+        assert!(xml.contains("type=\"full\""));
+    }
+
 }
