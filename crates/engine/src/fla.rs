@@ -131,6 +131,39 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
     if shape.merge || shape.warp.is_some() {
         return Err(EngineError::Format("native FLA export does not yet support merged shapes or warped artwork".into()));
     }
+    // Animate has no editable representation for AniCraft's asymmetric width profile.
+    // Preserve its appearance as a native filled vector outline instead of dropping the stroke.
+    if let Some(line) = shape.stroke.as_ref().filter(|line| line.profile.is_some()) {
+        if !line.width.is_finite() || line.width <= 0.0 {
+            return Err(EngineError::Format("native FLA export requires a finite, positive stroke width".into()));
+        }
+        if !line.style.miter_limit.is_finite()
+            || !(anicraft_doc::stroke_style::MIN_MITER_LIMIT..=anicraft_doc::stroke_style::MAX_MITER_LIMIT).contains(&line.style.miter_limit)
+        {
+            return Err(EngineError::Format("native FLA export requires a finite miter limit between 1 and 100".into()));
+        }
+        let mut base = shape.clone();
+        base.stroke = None;
+        let mut out = shape_xml(&base, transform, bitmap_names)?;
+        let outline = anicraft_render::stroke::stroke_outline(
+            &shape.path,
+            &anicraft_geom::Affine::IDENTITY,
+            line,
+            0.25,
+        );
+        if !outline.cmds.is_empty() {
+            let outline_shape = anicraft_doc::Shape {
+                path: outline,
+                fill: Some(Paint::Solid(line.color.sanitized())),
+                stroke: None,
+                fill_rule: anicraft_geom::FillRule::NonZero,
+                merge: false,
+                warp: None,
+            };
+            out.push_str(&shape_xml(&outline_shape, transform, bitmap_names)?);
+        }
+        return Ok(out);
+    }
     if let Some(paint) = &shape.fill {
         fill_index = 1;
         let definition = match paint {
@@ -822,6 +855,30 @@ mod tests {
         shape.stroke = Some(dotted);
         let xml = shape_xml(&shape, anicraft_geom::Affine::IDENTITY, &std::collections::HashMap::new()).unwrap();
         assert!(xml.contains("<DottedStroke") && xml.contains("dotSpace=\"4\""), "{xml}");
+    }
+
+    #[test]
+    fn variable_width_strokes_export_as_editable_filled_outlines() {
+        let mut shape = Shape::filled(
+            Path::line(
+                anicraft_geom::Vec2::new(0.0, 0.0),
+                anicraft_geom::Vec2::new(100.0, 0.0),
+            ),
+            Paint::Solid(anicraft_doc::Rgba::hex(0x336699)),
+        );
+        let stroke = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 8.0)
+            .with_profile(anicraft_doc::ProfilePreset::TaperBoth.profile());
+        shape.stroke = Some(stroke);
+        let xml = shape_xml(
+            &shape,
+            anicraft_geom::Affine::translate(3.0, 4.0),
+            &std::collections::HashMap::new(),
+        ).expect("variable-width strokes are outlined as native shapes");
+        assert!(xml.contains("SolidColor color=\"112233\""), "{xml}");
+        assert!(xml.contains("tx=\"3\" ty=\"4\""), "{xml}");
+        assert!(!xml.contains("SolidStroke") && !xml.contains("DashedStroke"), "{xml}");
+        assert!(xml.matches("<DOMShape>").count() >= 1, "{xml}");
+        assert!(xml.contains("<edges>"), "{xml}");
     }
 
     #[test]
