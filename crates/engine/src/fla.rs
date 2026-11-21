@@ -177,8 +177,8 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
         fill = format!("<fills><FillStyle index=\"1\">{definition}</FillStyle></fills>");
     }
     if let Some(line) = &shape.stroke {
-        if line.profile.is_some() || line.style.dash.is_some() {
-            return Err(EngineError::Format("native FLA export currently supports uniform solid strokes only; variable-width and dashed strokes are not yet supported".into()));
+        if line.profile.is_some() {
+            return Err(EngineError::Format("native FLA export does not yet support variable-width stroke profiles".into()));
         }
         if !line.width.is_finite() || line.width <= 0.0 {
             return Err(EngineError::Format("native FLA export requires a finite, positive stroke width".into()));
@@ -192,7 +192,22 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
         let c = line.color.sanitized();
         let caps = match line.style.cap { anicraft_doc::Cap::Butt => "none", anicraft_doc::Cap::Round => "round", anicraft_doc::Cap::Square => "square" };
         let joins = match line.style.join { anicraft_doc::Join::Miter => "miter", anicraft_doc::Join::Round => "round", anicraft_doc::Join::Bevel => "bevel" };
-        stroke = format!("<strokes><StrokeStyle index=\"1\"><SolidStroke scaleMode=\"normal\" weight=\"{}\" caps=\"{}\" joints=\"{}\" miterLimit=\"{}\"><fill><SolidColor color=\"{}\" alpha=\"{}\"/></fill></SolidStroke></StrokeStyle></strokes>", n(line.width), caps, joins, n(line.style.miter_limit), c.to_hex(), n(c.a));
+        let common = format!("scaleMode=\"normal\" weight=\"{}\" caps=\"{}\" joints=\"{}\" miterLimit=\"{}\"", n(line.width), caps, joins, n(line.style.miter_limit));
+        let (definition, tag) = match line.style.dash.as_ref() {
+            None => (format!("<SolidStroke {common}>"), "SolidStroke"),
+            Some(anicraft_doc::Dash::Dashed { lengths, .. }) if lengths.len() == 2 => (
+                format!("<DashedStroke {common} dash1=\"{}\" dash2=\"{}\">", n(lengths[0]), n(lengths[1])),
+                "DashedStroke",
+            ),
+            Some(anicraft_doc::Dash::Dotted { spacing }) => (
+                format!("<DottedStroke {common} dotSpace=\"{}\">", n(*spacing)),
+                "DottedStroke",
+            ),
+            Some(anicraft_doc::Dash::Dashed { .. }) => {
+                return Err(EngineError::Format("native FLA export supports two-part dashed stroke patterns only".into()));
+            }
+        };
+        stroke = format!("<strokes><StrokeStyle index=\"1\">{definition}<fill><SolidColor color=\"{}\" alpha=\"{}\"/></fill></{tag}></StrokeStyle></strokes>", c.to_hex(), n(c.a));
     }
     if fill_index == 0 && stroke_index == 0 { return Ok(String::new()); }
     let mut matrix = String::new();
@@ -788,6 +803,25 @@ mod tests {
         ).expect("finite shape should export");
         assert!(xml.contains("weight=\"2\""), "stroke width is expressed in pixels: {xml}");
         assert!(xml.contains("tx=\"3\" ty=\"4\""), "matrix translation is expressed in pixels: {xml}");
+    }
+
+    #[test]
+    fn dashed_and_dotted_strokes_keep_native_xfl_styles() {
+        let mut shape = Shape::filled(
+            Path::rect(0.0, 0.0, 10.0, 10.0),
+            Paint::Solid(anicraft_doc::Rgba::hex(0x336699)),
+        );
+        let mut dashed = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0);
+        dashed.style.dash = anicraft_doc::Dash::dashed(6.0, 3.0);
+        shape.stroke = Some(dashed);
+        let xml = shape_xml(&shape, anicraft_geom::Affine::IDENTITY, &std::collections::HashMap::new()).unwrap();
+        assert!(xml.contains("<DashedStroke") && xml.contains("dash1=\"6\"") && xml.contains("dash2=\"3\""), "{xml}");
+
+        let mut dotted = anicraft_doc::Stroke::new(anicraft_doc::Rgba::hex(0x112233), 2.0);
+        dotted.style.dash = anicraft_doc::Dash::dotted(4.0);
+        shape.stroke = Some(dotted);
+        let xml = shape_xml(&shape, anicraft_geom::Affine::IDENTITY, &std::collections::HashMap::new()).unwrap();
+        assert!(xml.contains("<DottedStroke") && xml.contains("dotSpace=\"4\""), "{xml}");
     }
 
     #[test]
