@@ -4,7 +4,7 @@
 //! Unsupported document features are rejected rather than silently flattened or discarded.
 
 use crate::{EngineError, Result};
-use anicraft_doc::{Document, Easing, ElementKind, LayerKind, Paint, TweenKind};
+use anicraft_doc::{Document, Easing, ElementKind, Filter, FilterEntry, FilterSide, LayerKind, Paint, TweenKind};
 use anicraft_doc::sound::{SoundEffect, SoundFormat};
 use anicraft_geom::PathCmd;
 use anicraft_geom::Path;
@@ -337,6 +337,76 @@ fn frame_tween_attrs(key: &anicraft_doc::Keyframe) -> Result<String> {
     }
 }
 
+fn filter_xml(filters: &[FilterEntry]) -> Result<String> {
+    if filters.is_empty() { return Ok(String::new()); }
+    let mut out = String::from("<filters>");
+    for entry in filters {
+        let enabled = if entry.enabled { "" } else { " enabled=\"false\"" };
+        let f = entry.filter.sanitized();
+        let attrs = match f {
+            Filter::Blur { blur_x, blur_y, quality } => format!(
+                "<BlurFilter blurX=\"{}\" blurY=\"{}\" quality=\"{}\"{enabled}/>",
+                n(blur_x), n(blur_y), quality
+            ),
+            Filter::DropShadow { blur_x, blur_y, strength, quality, angle, distance, color, inner, knockout, hide_object } => format!(
+                "<DropShadowFilter blurX=\"{}\" blurY=\"{}\" distance=\"{}\" angle=\"{}\" color=\"{}\" alpha=\"{}\" strength=\"{}\" quality=\"{}\" inner=\"{}\" knockout=\"{}\" hideObject=\"{}\"{enabled}/>",
+                n(blur_x), n(blur_y), n(distance), n(angle), color.to_hex(), n(color.a), n(strength), quality,
+                inner, knockout, hide_object
+            ),
+            Filter::Glow { blur_x, blur_y, strength, quality, color, inner, knockout } => format!(
+                "<GlowFilter blurX=\"{}\" blurY=\"{}\" color=\"{}\" alpha=\"{}\" strength=\"{}\" quality=\"{}\" inner=\"{}\" knockout=\"{}\"{enabled}/>",
+                n(blur_x), n(blur_y), color.to_hex(), n(color.a), n(strength), quality, inner, knockout
+            ),
+            Filter::Bevel { blur_x, blur_y, strength, quality, angle, distance, shadow_color, highlight_color, side, knockout } => format!(
+                "<BevelFilter blurX=\"{}\" blurY=\"{}\" distance=\"{}\" angle=\"{}\" highlightColor=\"{}\" highlightAlpha=\"{}\" shadowColor=\"{}\" shadowAlpha=\"{}\" strength=\"{}\" quality=\"{}\" type=\"{}\" knockout=\"{}\"{enabled}/>",
+                n(blur_x), n(blur_y), n(distance), n(angle), highlight_color.to_hex(), n(highlight_color.a),
+                shadow_color.to_hex(), n(shadow_color.a), n(strength), quality, filter_side_key(side), knockout
+            ),
+            Filter::GradientGlow { blur_x, blur_y, strength, quality, angle, distance, stops, side, knockout } => {
+                let mut ramp = String::new();
+                for stop in stops {
+                    push_bounded(&mut ramp, &format!(
+                        "<GradientEntry color=\"{}\" alpha=\"{}\" ratio=\"{}\"/>",
+                        stop.color.to_hex(), n(stop.color.a), n(stop.offset)
+                    ))?;
+                }
+                format!(
+                    "<GradientGlowFilter blurX=\"{}\" blurY=\"{}\" distance=\"{}\" angle=\"{}\" strength=\"{}\" quality=\"{}\" type=\"{}\" knockout=\"{}\"{enabled}>{ramp}</GradientGlowFilter>",
+                    n(blur_x), n(blur_y), n(distance), n(angle), n(strength), quality, filter_side_key(side), knockout
+                )
+            }
+            Filter::GradientBevel { blur_x, blur_y, strength, quality, angle, distance, stops, side, knockout } => {
+                let mut ramp = String::new();
+                for stop in stops {
+                    push_bounded(&mut ramp, &format!(
+                        "<GradientEntry color=\"{}\" alpha=\"{}\" ratio=\"{}\"/>",
+                        stop.color.to_hex(), n(stop.color.a), n(stop.offset)
+                    ))?;
+                }
+                format!(
+                    "<GradientBevelFilter blurX=\"{}\" blurY=\"{}\" distance=\"{}\" angle=\"{}\" strength=\"{}\" quality=\"{}\" type=\"{}\" knockout=\"{}\"{enabled}>{ramp}</GradientBevelFilter>",
+                    n(blur_x), n(blur_y), n(distance), n(angle), n(strength), quality, filter_side_key(side), knockout
+                )
+            }
+            Filter::AdjustColor { brightness, contrast, saturation, hue } => format!(
+                "<AdjustColorFilter brightness=\"{}\" contrast=\"{}\" saturation=\"{}\" hue=\"{}\"{enabled}/>",
+                n(brightness), n(contrast), n(saturation), n(hue)
+            ),
+        };
+        push_bounded(&mut out, &attrs)?;
+    }
+    push_bounded(&mut out, "</filters>")?;
+    Ok(out)
+}
+
+fn filter_side_key(side: FilterSide) -> &'static str {
+    match side {
+        FilterSide::Inner => "inner",
+        FilterSide::Outer => "outer",
+        FilterSide::Full => "full",
+    }
+}
+
 fn frame_script_xml(script: Option<&anicraft_doc::FrameScript>) -> Result<String> {
     let Some(script) = script else { return Ok(String::new()) };
     match script {
@@ -432,8 +502,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         }
                     }
                     ElementKind::Symbol { symbol, loop_mode, first_frame, blend, filters, events, .. } => {
-                        if *blend != anicraft_doc::BlendMode::Normal || !filters.is_empty() || !events.is_empty() {
-                            return Err(EngineError::Format(format!("symbol instance '{}' has a blend mode, filter, or event that cannot yet be serialized", element.name)));
+                        if *blend != anicraft_doc::BlendMode::Normal || !events.is_empty() {
+                            return Err(EngineError::Format(format!("symbol instance '{}' has a blend mode or event that cannot yet be serialized", element.name)));
                         }
                         let name = symbol_names.get(symbol).ok_or_else(|| EngineError::Format(format!("symbol instance '{}' references missing library item {}", element.name, symbol.0)))?;
                         let kind = doc.symbol(*symbol).map(|s| s.kind).ok_or_else(|| EngineError::Format(format!("symbol {} is missing", symbol.0)))?;
@@ -450,7 +520,8 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                         let label = if element.name.is_empty() { String::new() } else { format!(" name=\"{}\"", xml(&element.name)) };
                         let matrix = transform_xml(element.transform)?;
                         let color = color_effect_xml(element.color);
-                        let instance = format!("<DOMSymbolInstance libraryItemName=\"{}\"{symbol_type} loop=\"{loop_value}\" firstFrame=\"{}\"{label}>{matrix}{color}</DOMSymbolInstance>", xml(name), first_frame);
+                        let filter_xml = filter_xml(filters)?;
+                        let instance = format!("<DOMSymbolInstance libraryItemName=\"{}\"{symbol_type} loop=\"{loop_value}\" firstFrame=\"{}\"{label}>{matrix}{color}{filter_xml}</DOMSymbolInstance>", xml(name), first_frame);
                         push_bounded(&mut elements, &instance)?;
                     }
                     _ => {
