@@ -153,7 +153,7 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
         );
         if !outline.cmds.is_empty() {
             let outline_shape = anicraft_doc::Shape {
-                path: outline,
+                path: outline.into(),
                 fill: Some(Paint::Solid(line.color.sanitized())),
                 stroke: None,
                 fill_rule: anicraft_geom::FillRule::NonZero,
