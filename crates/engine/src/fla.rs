@@ -151,17 +151,20 @@ fn shape_xml(shape: &anicraft_doc::Shape, transform: anicraft_geom::Affine, bitm
             line,
             0.25,
         );
-        if !outline.cmds.is_empty() {
-            let outline_shape = anicraft_doc::Shape {
-                path: outline.into(),
-                fill: Some(Paint::Solid(line.color.sanitized())),
-                stroke: None,
-                fill_rule: anicraft_geom::FillRule::NonZero,
-                merge: false,
-                warp: None,
-            };
-            out.push_str(&shape_xml(&outline_shape, transform, bitmap_names)?);
+        if outline.cmds.is_empty() {
+            return Err(EngineError::Format(
+                "variable-width stroke could not be converted to a filled vector outline".into(),
+            ));
         }
+        let outline_shape = anicraft_doc::Shape {
+            path: outline.into(),
+            fill: Some(Paint::Solid(line.color.sanitized())),
+            stroke: None,
+            fill_rule: anicraft_geom::FillRule::NonZero,
+            merge: false,
+            warp: None,
+        };
+        out.push_str(&shape_xml(&outline_shape, transform, bitmap_names)?);
         return Ok(out);
     }
     if let Some(paint) = &shape.fill {
