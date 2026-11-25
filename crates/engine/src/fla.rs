@@ -514,6 +514,9 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             if layer.kind == LayerKind::Camera && key.elements.iter().any(|element| !matches!(element.kind, ElementKind::Camera)) {
                 return Err(EngineError::Format(format!("camera layer '{}' contains non-camera artwork at frame {}", layer.name, key.start)));
             }
+            if layer.kind == LayerKind::Camera && key.elements.iter().filter(|element| matches!(element.kind, ElementKind::Camera)).count() > 1 {
+                return Err(EngineError::Format(format!("camera layer '{}' has more than one camera at frame {}", layer.name, key.start)));
+            }
             let tween_attrs = frame_tween_attrs(key)?;
             let mut elements = String::from("<elements>");
             for element in &key.elements {
@@ -927,6 +930,28 @@ mod tests {
         assert!(xml.contains("name=\"___camera___instance\""), "{xml}");
         assert!(xml.contains("isVisible=\"false\""), "{xml}");
         assert!(xml.contains("tx=\"640\" ty=\"360\""), "{xml}");
+    }
+
+    #[test]
+    fn camera_layers_reject_multiple_camera_instances_in_one_keyframe() {
+        let mut doc = Document::default();
+        let stage = doc.stage;
+        {
+            let layer = Arc::make_mut(&mut doc.timeline_mut(0).layers[0]);
+            layer.kind = LayerKind::Camera;
+            let key = layer.keyframe_mut(0).expect("camera layer has a first keyframe");
+            key.elements.push(Arc::new(anicraft_doc::Camera::rest(&stage).to_element(ElementId(8810))));
+            key.elements.push(Arc::new(anicraft_doc::Camera::rest(&stage).to_element(ElementId(8811))));
+        }
+        let mut shapes = 0;
+        let error = timeline_xml(
+            doc.timeline(0),
+            &doc,
+            &mut shapes,
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::new(),
+        ).expect_err("one camera layer keyframe cannot contain two cameras");
+        assert!(error.to_string().contains("more than one camera"));
     }
 
     #[test]
