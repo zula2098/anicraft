@@ -903,17 +903,20 @@ mod tests {
     #[allow(clippy::expect_used)]
     fn camera_layer_exports_as_animate_camera_instance() {
         let mut doc = Document::default();
-        let timeline = doc.timeline_mut(0);
-        let layer = Arc::make_mut(&mut timeline.layers[0]);
-        layer.kind = LayerKind::Camera;
-        layer.name = "Camera".into();
-        let camera = anicraft_doc::Camera::rest(&doc.stage).to_element(ElementId(8801));
-        layer.keyframe_mut(0).expect("camera layer has a first keyframe")
-            .elements.push(Arc::new(camera));
+        let stage = doc.stage;
+        {
+            let timeline = doc.timeline_mut(0);
+            let layer = Arc::make_mut(&mut timeline.layers[0]);
+            layer.kind = LayerKind::Camera;
+            layer.name = "Camera".into();
+            let camera = anicraft_doc::Camera::rest(&stage).to_element(ElementId(8801));
+            layer.keyframe_mut(0).expect("camera layer has a first keyframe")
+                .elements.push(Arc::new(camera));
+        }
 
         let mut shapes = 0;
         let xml = timeline_xml(
-            timeline,
+            doc.timeline(0),
             &doc,
             &mut shapes,
             &std::collections::HashMap::new(),
@@ -929,13 +932,16 @@ mod tests {
     #[test]
     fn camera_elements_on_normal_layers_are_rejected() {
         let mut doc = Document::default();
-        let timeline = doc.timeline_mut(0);
-        let camera = anicraft_doc::Camera::rest(&doc.stage).to_element(ElementId(8802));
-        Arc::make_mut(&mut timeline.layers[0]).keyframe_mut(0)
-            .expect("default layer has a first keyframe").elements.push(Arc::new(camera));
+        let stage = doc.stage;
+        {
+            let timeline = doc.timeline_mut(0);
+            let camera = anicraft_doc::Camera::rest(&stage).to_element(ElementId(8802));
+            Arc::make_mut(&mut timeline.layers[0]).keyframe_mut(0)
+                .expect("default layer has a first keyframe").elements.push(Arc::new(camera));
+        }
         let mut shapes = 0;
         let error = timeline_xml(
-            timeline,
+            doc.timeline(0),
             &doc,
             &mut shapes,
             &std::collections::HashMap::new(),
