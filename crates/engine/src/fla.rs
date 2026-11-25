@@ -302,9 +302,16 @@ pub(crate) fn sound_media_xml(doc: &Document) -> Result<(String, Vec<(PathBuf, V
         if sound.data.is_empty() {
             return Err(EngineError::Format(format!("sound '{}' has no audio data", sound.name)));
         }
+        if !matches!(sound.channels, 1 | 2) {
+            return Err(EngineError::Format(format!(
+                "sound '{}' has {} channels; native FLA export supports mono or stereo audio only",
+                sound.name, sound.channels
+            )));
+        }
         let name = sound_library_name(doc, sound)?;
         let id = format!("00000000-0000-0000-0000-{:012}", sound.id.0 % 1_000_000_000_000);
-        let rate_khz = ((sound.rate + 500) / 1000).max(1);
+        // Widen before rounding: malformed documents may carry u32::MAX here.
+        let rate_khz = ((u64::from(sound.rate) + 500) / 1000).max(1);
         let channels = if sound.channels == 1 { "Mono" } else { "Stereo" };
         let format = format!("{rate_khz}kHz 16bit {channels}");
         push_bounded(&mut media, &format!(
@@ -1215,6 +1222,21 @@ mod tests {
         assert!(matches!(shape.fill, Some(Paint::Bitmap { .. })));
         let symbol_shape = &opened.library[0].timeline.layers[0].keyframe_at(0).expect("symbol keyframe").elements[0];
         assert!(matches!(symbol_shape.kind, ElementKind::Shape(_)));
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn sound_export_rejects_unsupported_channel_counts() {
+        let mut doc = Document::default();
+        let mut sound = anicraft_doc::Sound::from_data(
+            anicraft_doc::SoundId(78),
+            "tone.mp3",
+            include_bytes!("../../audio/tests/data/tone.mp3").to_vec(),
+        ).expect("the test MP3 should decode");
+        sound.channels = 6;
+        doc.sounds.push(Arc::new(sound));
+        let error = sound_media_xml(&doc).expect_err("surround audio must not be mislabeled stereo");
+        assert!(error.to_string().contains("supports mono or stereo"));
     }
 
     #[test]
