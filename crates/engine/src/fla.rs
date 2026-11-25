@@ -481,6 +481,7 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             LayerKind::Mask => " layerType=\"mask\"",
             LayerKind::Guide => " layerType=\"guide\"",
             LayerKind::Folder => " layerType=\"folder\"",
+            LayerKind::Camera => " layerType=\"camera\"",
             other => return Err(EngineError::Format(format!("native FLA export does not yet support {:?} layers", other))),
         };
         let parent = match layer.parent {
@@ -509,6 +510,9 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
             }
             if key.motion.is_some() || !key.hints.is_empty() || !key.pose.is_empty() {
                 return Err(EngineError::Format(format!("native FLA export does not yet support motion tweens, shape hints, or armature poses (layer '{}', frame {})", layer.name, key.start)));
+            }
+            if layer.kind == LayerKind::Camera && key.elements.iter().any(|element| !matches!(element.kind, ElementKind::Camera)) {
+                return Err(EngineError::Format(format!("camera layer '{}' contains non-camera artwork at frame {}", layer.name, key.start)));
             }
             let tween_attrs = frame_tween_attrs(key)?;
             let mut elements = String::from("<elements>");
@@ -551,6 +555,17 @@ fn timeline_xml(timeline: &anicraft_doc::Timeline, doc: &Document, total_shapes:
                             let shape = shape_xml(&outlines, element.transform, bitmap_names)?;
                             push_bounded(&mut elements, &shape)?;
                         }
+                    }
+                    ElementKind::Camera => {
+                        if layer.kind != LayerKind::Camera {
+                            return Err(EngineError::Format(format!("camera element '{}' is not on a camera layer", element.name)));
+                        }
+                        let matrix = transform_xml(element.transform)?;
+                        let color = color_effect_xml(element.color);
+                        let instance = format!(
+                            "<DOMSymbolInstance libraryItemName=\"__Camera__\" name=\"___camera___instance\" isVisible=\"false\">{matrix}{color}<transformationPoint><Point /></transformationPoint></DOMSymbolInstance>"
+                        );
+                        push_bounded(&mut elements, &instance)?;
                     }
                     ElementKind::Symbol { symbol, loop_mode, first_frame, blend, filters, events, .. } => {
                         if *blend != anicraft_doc::BlendMode::Normal || !events.is_empty() {
@@ -882,6 +897,51 @@ mod tests {
         assert!(!xml.contains("SolidStroke") && !xml.contains("DashedStroke"), "{xml}");
         assert!(xml.matches("<DOMShape>").count() >= 1, "{xml}");
         assert!(xml.contains("<edges>"), "{xml}");
+    }
+
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn camera_layer_exports_as_animate_camera_instance() {
+        let mut doc = Document::default();
+        let timeline = doc.timeline_mut(0);
+        let layer = Arc::make_mut(&mut timeline.layers[0]);
+        layer.kind = LayerKind::Camera;
+        layer.name = "Camera".into();
+        let camera = anicraft_doc::Camera::rest(&doc.stage).to_element(ElementId(8801));
+        layer.keyframe_mut(0).expect("camera layer has a first keyframe")
+            .elements.push(Arc::new(camera));
+
+        let mut shapes = 0;
+        let xml = timeline_xml(
+            timeline,
+            &doc,
+            &mut shapes,
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::new(),
+        ).expect("camera layer should serialize");
+        assert!(xml.contains("layerType=\"camera\""), "{xml}");
+        assert!(xml.contains("libraryItemName=\"__Camera__\""), "{xml}");
+        assert!(xml.contains("name=\"___camera___instance\""), "{xml}");
+        assert!(xml.contains("isVisible=\"false\""), "{xml}");
+        assert!(xml.contains("tx=\"640\" ty=\"360\""), "{xml}");
+    }
+
+    #[test]
+    fn camera_elements_on_normal_layers_are_rejected() {
+        let mut doc = Document::default();
+        let timeline = doc.timeline_mut(0);
+        let camera = anicraft_doc::Camera::rest(&doc.stage).to_element(ElementId(8802));
+        Arc::make_mut(&mut timeline.layers[0]).keyframe_mut(0)
+            .expect("default layer has a first keyframe").elements.push(Arc::new(camera));
+        let mut shapes = 0;
+        let error = timeline_xml(
+            timeline,
+            &doc,
+            &mut shapes,
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::new(),
+        ).expect_err("camera element must be on a camera layer");
+        assert!(error.to_string().contains("not on a camera layer"));
     }
 
     #[test]
