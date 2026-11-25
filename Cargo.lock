@@ -245,6 +245,7 @@ name = "anicraft"
 version = "0.3.0"
 dependencies = [
  "android-ime",
+ "jni 0.21.1",
  "anicraft-audio",
  "anicraft-cli",
  "anicraft-doc",
@@ -271,6 +272,7 @@ dependencies = [
  "wat",
  "web-sys",
  "web-time",
+ "winit 0.30.13",
  "winreg",
  "winresource",
 ]
