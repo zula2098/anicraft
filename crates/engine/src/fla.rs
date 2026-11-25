@@ -1228,7 +1228,7 @@ mod tests {
             }.into(),
             Filter::AdjustColor { brightness: -20.0, contrast: 30.0, saturation: -100.0, hue: 15.0 }.into(),
         ];
-        let mut disabled = Filter::Blur { blur_x: 20.0, blur_y: 20.0, quality: 1 }.into();
+        let mut disabled: FilterEntry = Filter::Blur { blur_x: 20.0, blur_y: 20.0, quality: 1 }.into();
         disabled.enabled = false;
         let filters = [filters.as_slice(), std::slice::from_ref(&disabled)].concat();
         let xml = filter_xml(&filters).expect("all native filter kinds should serialize");
